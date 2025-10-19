@@ -3,367 +3,158 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>ARK Spread Monitor</title>
-  <meta name="theme-color" content="#0b0e12">
+  <title>ARK limit-advies</title>
   <style>
-    :root{
-      --bg:#0b0e12; --panel:#141922; --panel-2:#1a2130; --acc:#c8a76a; --text:#f1f3f7; --muted:#8892a3;
-      --good:#0fb26f; --bad:#ff5a5f; --warn:#ffb020; --focus:#3aa2ff; --shadow:0 12px 24px rgba(0,0,0,.28); --radius:20px;
-      --space:18px;
+    :root {
+      color-scheme: dark;
+      --bg: #080c12;
+      --card: #111824;
+      --border: rgba(255,255,255,0.08);
+      --text: #f5f7fb;
+      --muted: #8b94a7;
+      --go: #22c277;
+      --nogo: #ff5d5d;
+      --accent: #d7b46a;
+      --radius: 18px;
+      --space: 18px;
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
     }
-    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
-      background:#0b0e12;
-      color:var(--text);
-      line-height:1.45;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: clamp(16px, 3vw, 32px);
+      display: flex;
+      justify-content: center;
     }
-    header{
-      padding:calc(12px + env(safe-area-inset-top,0)) var(--space) 4px;
-      position:sticky;
-      top:0;
-      z-index:5;
-      background:rgba(11,14,18,.94);
-      backdrop-filter:blur(8px);
-      border-bottom:1px solid rgba(255,255,255,.06);
+    main {
+      width: min(560px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space);
     }
-    .wrap{max-width:960px;margin:0 auto;padding:0 var(--space) var(--space)}
-    h1{font-size:1.4rem;margin:0 0 4px;font-weight:700;letter-spacing:.1px}
-    .sub{color:var(--muted);font-size:.95rem;margin:0 0 16px;max-width:46ch}
-    .card{
-      background:linear-gradient(160deg,var(--panel),var(--panel-2));
-      border:1px solid rgba(255,255,255,.07);
-      border-radius:var(--radius);
-      box-shadow:var(--shadow);
-      padding:var(--space);
-      display:flex;
-      flex-direction:column;
-      gap:var(--space);
-      margin-bottom:var(--space);
+    section.card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: var(--space);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space);
+      box-shadow: 0 24px 40px rgba(0,0,0,0.25);
     }
-    .card h2{font-size:1.15rem;margin:0;font-weight:700;letter-spacing:.15px}
-    .row{display:flex;flex-direction:column;gap:8px;margin:0}
-    @media(min-width:640px){.row{flex-direction:row;align-items:center;justify-content:space-between}}
-    .row span.label{color:var(--muted);font-size:.92rem;flex:1}
-    input[type=number], select{
-      width:100%;
-      padding:14px 16px;
-      border-radius:14px;
-      background:#0d131c;
-      color:var(--text);
-      border:1px solid rgba(255,255,255,.12);
-      outline:none;
-      font-size:1rem;
-      -webkit-appearance:none;
-      min-height:52px;
+    h1 { font-size: 1.35rem; }
+    p.sub { color: var(--muted); font-size: 0.95rem; }
+    .top { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+    .badge {
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      font-size: 0.85rem;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      text-transform: uppercase;
+      align-self: flex-start;
     }
-    input[type=number]:focus, select:focus{border-color:var(--focus);box-shadow:0 0 0 2px rgba(58,162,255,.18)}
-    .note{color:var(--muted);font-size:.9rem;margin:0}
-    .actions{display:flex;flex-wrap:wrap;gap:10px}
-    button{
-      appearance:none;
-      border:1px solid rgba(255,255,255,.12);
-      background:#121924;
-      color:var(--text);
-      padding:14px 18px;
-      border-radius:14px;
-      font-weight:600;
-      font-size:1rem;
-      min-height:52px;
-      flex:1;
-      touch-action:manipulation;
+    .badge.go { background: rgba(34,194,119,0.16); border-color: rgba(34,194,119,0.45); color: var(--go); }
+    .badge.nogo { background: rgba(255,93,93,0.14); border-color: rgba(255,93,93,0.4); color: var(--nogo); }
+    .line { font-size: 1.05rem; display: flex; justify-content: space-between; gap: 8px; }
+    .line span { font-variant-numeric: tabular-nums; font-weight: 600; }
+    .meta { color: var(--muted); font-size: 0.95rem; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+    .meta strong { color: var(--text); }
+    .book { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 0.92rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    button {
+      flex: 1;
+      min-width: 140px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font-weight: 600;
+      padding: 12px 16px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease;
     }
-    button.primary{background:linear-gradient(180deg,#233148,#1a2434);border-color:#334055}
-    button.accent{background:linear-gradient(180deg,#3a2f1a,#2a2419);border-color:#5b4a2b;color:var(--acc)}
-    @media(min-width:520px){button{flex:0 1 auto;min-width:160px}}
-    .kpis{display:grid;grid-template-columns:1fr;gap:10px}
-    @media(min-width:480px){.kpis{grid-template-columns:repeat(2,1fr)}}
-    @media(min-width:760px){.kpis{grid-template-columns:repeat(3,1fr)}}
-    .kpis.major{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
-    .pill{background:#0d131c;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;gap:8px;align-items:center}
-    .pill .val{font-weight:700}
-    .ok{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)} .yesno{font-weight:800;letter-spacing:.2px}
-    .advice{background:#0d131c;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px;font-size:.95rem;line-height:1.5}
-    .advice.ok{border-color:rgba(15,178,111,.4);color:var(--good)}
-    .advice.warn{border-color:rgba(255,176,32,.4);color:var(--warn)}
-    .advice.bad{border-color:rgba(255,90,95,.4);color:var(--bad)}
-    footer{padding:28px var(--space) calc(28px + env(safe-area-inset-bottom,0));color:var(--muted);text-align:center;font-size:.85rem}
-    .hr{height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);margin:4px 0}
-    #chartWrap{height:360px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:#0d131c}
-    @media(min-width:960px){#chartWrap{height:520px}}
-    #status{margin-top:-6px;color:var(--muted);font-size:.9rem}
-    #status.ok{color:var(--good)} #status.bad{color:var(--bad)} #status.warn{color:var(--warn)}
-    details.card{padding:0}
-    details.card > summary{
-      padding:var(--space);
-      cursor:pointer;
-      font-weight:600;
-      list-style:none;
+    button:active { transform: scale(0.98); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    label { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; color: var(--muted); }
+    label span { font-weight: 600; color: var(--text); font-size: 0.95rem; }
+    input[type="number"] {
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 1rem;
+      -moz-appearance: textfield;
     }
-    details.card[open] > summary{border-bottom:1px solid rgba(255,255,255,.08)}
-    details.card > summary::-webkit-details-marker{display:none}
-    details.card .section-body{padding:var(--space);display:flex;flex-direction:column;gap:var(--space)}
-    details.card .section-body .row{margin:0}
-    details.card .actions{padding-top:4px}
-    @media (prefers-reduced-motion: reduce){
-      *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    small { color: var(--muted); font-size: 0.82rem; }
+    @media (max-width: 420px) {
+      body { padding: 12px; }
+      section.card { padding: 16px; }
+      h1 { font-size: 1.15rem; }
+      .line { font-size: 1rem; }
     }
   </style>
 </head>
 <body>
-  <header class="wrap">
-    <h1>ARK Spread monitor</h1>
-    <div class="sub">Plak je <strong>bid/ask</strong>, bekijk direct de spread en krijg een snelle trade-check.</div>
-  </header>
-
-  <main class="wrap">
-    <section class="card" id="live">
-      <h2>Live invoer</h2>
-      <p class="note">Vul de actuele best bid/ask en je grootte in. Voeg optioneel volume/liquiditeit toe voor het advies.</p>
-      <div class="row"><span class="label">Best bid (EUR)</span><input type="number" step="0.0001" min="0" id="bid" inputmode="decimal" /></div>
-      <div class="row"><span class="label">Best ask (EUR)</span><input type="number" step="0.0001" min="0" id="ask" inputmode="decimal" /></div>
-      <div class="row"><span class="label">Positiegrootte (EUR, per leg)</span><input type="number" step="1" min="0" id="pos" inputmode="decimal" value="200" /></div>
-      <div class="row"><span class="label">24h volume (EUR)</span><input type="number" step="1" min="0" id="volume" inputmode="decimal" placeholder="bijv. 750000" /></div>
-      <div class="row"><span class="label">Liquiditeitsscore (1-10)</span><input type="number" step="1" min="1" max="10" id="liquidity" inputmode="decimal" placeholder="bijv. 3" /></div>
-      <div class="hr"></div>
-      <div class="kpis major">
-        <div class="pill"><span>Spread</span><span class="val" id="spread">–</span></div>
-        <div class="pill"><span>Hoogste BUY</span><span class="val" id="highestBuy">–</span></div>
-        <div class="pill"><span>Laagste BUY</span><span class="val" id="lowestBuy">–</span></div>
+  <main>
+    <section class="card" id="adviceCard">
+      <div class="top">
+        <div>
+          <h1>ARK limit-advies</h1>
+          <p class="sub">Live bid/ask, automatische limieten en net edge in één scherm.</p>
+        </div>
+        <span id="statusBadge" class="badge nogo">NO-GO</span>
       </div>
-      <div class="kpis">
-        <div class="pill"><span>Mid</span><span class="val" id="mid">–</span></div>
-        <div class="pill"><span>Round-trip fee</span><span class="val" id="rtfee">–</span></div>
-        <div class="pill"><span>Net edge</span><span class="val" id="edge">–</span></div>
-        <div class="pill"><span>Breakeven</span><span class="val" id="breakeven">–</span></div>
-        <div class="pill"><span>Geschikt?</span><span class="val yesno" id="eligible">–</span></div>
-        <div class="pill"><span>Exp. P&amp;L / cycle</span><span class="val" id="pnl">–</span></div>
+      <div class="line">BUY-limit: <span id="buyValue">–</span></div>
+      <div class="line">SELL-limit: <span id="sellValue">–</span></div>
+      <div class="meta" id="metrics">Net edge: <strong id="edgeValue">–</strong>% • Breakeven: <strong id="breakevenValue">–</strong>% • P&amp;L/cyclus: <strong id="pnlValue">–</strong></div>
+      <div class="book">
+        <span>Bid: <strong id="bidValue">–</strong></span>
+        <span>Ask: <strong id="askValue">–</strong></span>
+        <span id="tickInfo">Laatste tick: –</span>
+        <span id="sourceInfo"></span>
       </div>
-      <div class="kpis">
-        <div class="pill"><span>BUY limit</span><span class="val" id="buy">–</span></div>
-        <div class="pill"><span>SELL limit</span><span class="val" id="sell">–</span></div>
-      </div>
-      <div class="advice" id="advice">Vul gegevens in om advies te ontvangen.</div>
       <div class="actions">
-        <button class="primary" id="pasteBidAsk">Plak bid/ask</button>
-        <button id="resetLive">Reset</button>
+        <button id="copyBuy">Kopieer BUY</button>
+        <button id="copySell">Kopieer SELL</button>
       </div>
     </section>
-
-    <details class="card" id="cfg" open>
-      <summary>Chart &amp; fees (optioneel)</summary>
-      <div class="section-body">
-        <div class="row"><span class="label">Maker fee (%)</span><input type="number" step="0.0001" min="0" id="maker" inputmode="decimal" value="0.25" /></div>
-        <div class="row"><span class="label">Taker fee (%)</span><input type="number" step="0.0001" min="0" id="taker" inputmode="decimal" value="0.25" /></div>
-        <div class="row"><span class="label">Slippage per leg (%)</span><input type="number" step="0.0001" min="0" id="slip" inputmode="decimal" value="0.05" /></div>
-        <div class="row"><span class="label">Min edge (%)</span><input type="number" step="0.0001" min="0" id="minedge" inputmode="decimal" value="0.20" /></div>
-        <div class="row"><span class="label">Max positie (EUR)</span><input type="number" step="1" min="0" id="maxpos" inputmode="decimal" value="500" /></div>
-        <div class="row"><span class="label">Tick size (EUR)</span><input type="number" step="0.0001" min="0.0001" id="tick" inputmode="decimal" value="0.0001" /></div>
-        <div class="row">
-          <span class="label">Chart bron</span>
-          <select id="symbol">
-            <option value="BITVAVO:ARKEUR">BITVAVO: ARK/EUR</option>
-            <option value="BINANCE:ARKUSDT">BINANCE: ARK/USDT</option>
-            <option value="BINANCE:ARKEUR">BINANCE: ARK/EUR</option>
-          </select>
-        </div>
-        <div class="actions">
-          <button class="accent" id="saveCfg">Opslaan</button>
-          <button id="resetCfg">Reset</button>
-          <button id="reloadChart">Herlaad chart</button>
-        </div>
-        <div id="status" class="">Status: initialiseren…</div>
-        <div class="note">Werkt <strong>BITVAVO:ARKEUR</strong> niet? De app schakelt automatisch naar <strong>BINANCE</strong>. Controleer de status boven de chart.</div>
-        <div class="hr"></div>
-        <div id="chartWrap"><div id="tvchart" style="width:100%;height:100%"></div></div>
-      </div>
-    </details>
+    <section class="card" id="settingsCard">
+      <h2>Instellingen</h2>
+      <form id="settingsForm">
+        <label>
+          <span>Maker fee (%)</span>
+          <input type="number" step="0.01" min="0" id="makerFee" />
+        </label>
+        <label>
+          <span>Slippage/leg (%)</span>
+          <input type="number" step="0.01" min="0" id="slippage" />
+        </label>
+        <label>
+          <span>Min edge (%)</span>
+          <input type="number" step="0.01" min="0" id="minEdge" />
+        </label>
+        <label>
+          <span>Positie (EUR)</span>
+          <input type="number" step="1" min="0" id="position" />
+        </label>
+        <label>
+          <span>Tick</span>
+          <input type="number" step="0.0001" min="0" id="tick" />
+        </label>
+      </form>
+      <small>Instellingen worden lokaal opgeslagen en direct toegepast.</small>
+    </section>
   </main>
-
-  <footer>Client-side • Geen data verstuurd • TradingView-widget (fallback beschikbaar)</footer>
-
-  <!-- TradingView library -->
-  <script src="https://s3.tradingview.com/tv.js"></script>
-  <script>
-  (function(){
-    const $ = s => document.querySelector(s);
-    const log = (...a)=>{ try{ console.log('[ARK-APP]', ...a);}catch(e){} };
-    const setStatus = (msg, cls) => { const s=$('#status'); s.textContent='Status: '+msg; s.className=''; if(cls) s.classList.add(cls); };
-
-    const nfEUR = new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR',maximumFractionDigits:6});
-    const nfPCT = new Intl.NumberFormat('nl-NL',{style:'percent',minimumFractionDigits:2,maximumFractionDigits:2});
-
-    const ids = ["bid","ask","pos","volume","liquidity","maker","taker","slip","minedge","maxpos","tick","symbol"];
-    const el = Object.fromEntries(ids.map(id => [id,$('#'+id)]));
-    const out = {
-      mid:$('#mid'), spread:$('#spread'), rtfee:$('#rtfee'), edge:$('#edge'), breakeven:$('#breakeven'), eligible:$('#eligible'),
-      buy:$('#buy'), sell:$('#sell'), pnl:$('#pnl'), highestBuy:$('#highestBuy'), lowestBuy:$('#lowestBuy'), advice:$('#advice')
-    };
-
-    function loadCfg(){ try{ const cfg = JSON.parse(localStorage.getItem('ark_spread_cfg')||"{}"); for(const k of ["maker","taker","slip","minedge","maxpos","tick","symbol"]) if(cfg[k]!=null) el[k].value = cfg[k]; }catch(e){} }
-    function saveCfg(){ const cfg = Object.fromEntries(["maker","taker","slip","minedge","maxpos","tick","symbol"].map(k=>[k,el[k].value])); localStorage.setItem('ark_spread_cfg', JSON.stringify(cfg)); setStatus('Config opgeslagen', 'ok'); }
-
-    function num(v){ if(v===""||v==null||isNaN(+v)) return NaN; return +v; }
-    function floorTick(x,t){ return Math.floor(x/t)*t; }
-    function ceilTick(x,t){ return Math.ceil(x/t)*t; }
-    function setOut(key,text,cls){ const elx = out[key]; elx.textContent = text; elx.classList.remove('ok','bad','warn'); if(cls) elx.classList.add(cls); }
-    function setAdvice(text, cls){ const box = out.advice; box.textContent = text; box.className='advice'; if(cls) box.classList.add(cls); }
-
-    function compute(){
-      const bid = num(el.bid.value); const ask = num(el.ask.value); const pos = Math.min(num(el.pos.value)||0, num(el.maxpos.value)||0);
-      const maker = (num(el.maker.value)||0)/100; const slip = (num(el.slip.value)||0)/100; const minedge = (num(el.minedge.value)||0)/100; const tick = num(el.tick.value)||0.0001;
-
-      if(!(bid>0)||!(ask>0)||!(tick>0)){
-        ['mid','spread','rtfee','edge','breakeven','eligible','buy','sell','pnl','highestBuy','lowestBuy'].forEach(k=>setOut(k,'–'));
-        setAdvice('Vul geldige bid- en ask-waarden in om de spread te zien.', '');
-        return;
-      }
-
-      const mid=(bid+ask)/2; const spread=(ask-bid)/mid; const roundTrip=maker+maker+slip+slip; const netEdge=spread-roundTrip; const breakeven=roundTrip; const eligible=netEdge>=minedge;
-      const buy=floorTick(bid,tick); const sell=ceilTick(ask,tick);
-      const qty = mid>0 ? (pos/mid) : 0; const fees = (pos*maker)+(pos*maker)+(pos*slip)+(pos*slip); const pnl=((sell-buy)*qty)-fees;
-
-      setOut('mid', nfEUR.format(mid));
-      setOut('spread', nfPCT.format(spread), spread>0?'ok':'bad');
-      setOut('rtfee', nfPCT.format(roundTrip));
-      setOut('edge', nfPCT.format(netEdge), eligible?'ok':'bad');
-      setOut('breakeven', nfPCT.format(breakeven));
-      setOut('eligible', eligible?'JA':'NEE', eligible?'ok':'bad');
-      setOut('buy', nfEUR.format(buy));
-      setOut('sell', nfEUR.format(sell));
-      setOut('pnl', nfEUR.format(pnl), pnl>=0?'ok':'bad');
-      setOut('highestBuy', nfEUR.format(bid));
-      setOut('lowestBuy', nfEUR.format(buy));
-
-      const volume = num(el.volume.value);
-      const liquidity = num(el.liquidity.value);
-      const volHigh = volume && volume >= 500000;
-      const liqLow = liquidity && liquidity <= 3;
-
-      let msg = 'Spread en edge binnen parameters. Behoud limietorders.';
-      let cls = eligible ? 'ok' : 'warn';
-
-      if(!eligible){
-        msg = 'Edge ligt onder je minimum. Overweeg te wachten tot de spread verbetert.';
-        cls = 'bad';
-      } else if(volHigh && liqLow){
-        msg = 'Volume is hoog maar liquiditeit laag: vul kleinere orders en laat je limieten werken.';
-        cls = 'warn';
-      } else if(volHigh){
-        msg = 'Volume is hoog: snelle fills mogelijk, blijf je limiet bewaken.';
-        cls = 'ok';
-      } else if(liqLow){
-        msg = 'Liquiditeit is laag: gebruik kleine stappen en accepteer langere wachttijden.';
-        cls = 'warn';
-      }
-
-      setAdvice(msg, cls);
-    }
-
-    $('#pasteBidAsk').addEventListener('click', async ()=>{
-      try{
-        const txt = await navigator.clipboard.readText();
-        const m = txt.match(/([0-9]+[.,]?[0-9]*)/g);
-        if(m && m.length>=2){
-          const a = m.map(s=>+s.replace(',','.')).filter(x=>!isNaN(x));
-          const b=Math.min(a[0],a[1]); const s=Math.max(a[0],a[1]);
-          el.bid.value=b.toFixed(4); el.ask.value=s.toFixed(4);
-          compute(); setStatus('Bid/ask geplakt van klembord', 'ok');
-        } else {
-          setStatus('Kon geen twee getallen vinden in klembord', 'warn');
-        }
-      }catch(e){
-        setStatus('Klembord niet beschikbaar. Plak handmatig a.u.b.', 'warn');
-      }
-    });
-
-    ['bid','ask','pos','volume','liquidity','maker','taker','slip','minedge','maxpos','tick'].forEach(k=> el[k].addEventListener('input', compute, {passive:true}));
-
-    $('#saveCfg').addEventListener('click', saveCfg);
-    $('#resetCfg').addEventListener('click', ()=>{
-      localStorage.removeItem('ark_spread_cfg');
-      const d={maker:'0.25',taker:'0.25',slip:'0.05',minedge:'0.20',maxpos:'500',tick:'0.0001',symbol:'BITVAVO:ARKEUR'};
-      for(const k in d) el[k].value=d[k];
-      compute(); loadChart(true);
-      setStatus('Config gereset naar standaard', 'warn');
-    });
-
-    $('#resetLive').addEventListener('click', ()=>{ el.bid.value=''; el.ask.value=''; el.pos.value='200'; el.volume.value=''; el.liquidity.value=''; compute(); });
-
-    function useIframeFallback(sym){
-      const cont = document.getElementById('tvchart');
-      cont.innerHTML = '';
-      const url = `https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=1&hidesidetoolbar=0&symboledit=1&saveimage=0&toolbarbg=%23151a22&studies=Volume%40tv-basicstudies&theme=dark&style=1&timezone=Europe%2FAmsterdam&hide_top_toolbar=0`;
-      const ifr = document.createElement('iframe');
-      ifr.src = url; ifr.style.width='100%'; ifr.style.height='100%'; ifr.frameBorder='0'; ifr.allowTransparency='true'; ifr.scrolling='no';
-      cont.appendChild(ifr);
-      setStatus('Chart via iframe fallback geladen voor '+sym, 'warn');
-      log('Using iframe fallback for', sym);
-    }
-
-    function loadChart(force){
-      const preferred = el.symbol.value || 'BITVAVO:ARKEUR';
-      const candidates = [preferred, 'BINANCE:ARKUSDT', 'BINANCE:ARKEUR'];
-      let tried = [];
-      function tryNext(){
-        const sym = candidates.find(s => !tried.includes(s));
-        if(!sym){ setStatus('Geen werkende chartbron gevonden. Probeer later opnieuw.', 'bad'); return; }
-        tried.push(sym);
-        localStorage.setItem('ark_spread_cfg', JSON.stringify(Object.assign(JSON.parse(localStorage.getItem('ark_spread_cfg')||"{}"), {symbol:sym})));
-        const cont = document.getElementById('tvchart'); cont.innerHTML = '';
-        setStatus('Bezig met laden van chart voor '+sym+'…', '');
-
-        if (window.TradingView && TradingView.widget){
-          try{
-            new TradingView.widget({
-              symbol: sym,
-              interval: '1',
-              timezone: 'Europe/Amsterdam',
-              theme: 'dark',
-              style: '1',
-              locale: 'nl',
-              toolbar_bg: '#151a22',
-              enable_publishing: false,
-              allow_symbol_change: true,
-              hide_side_toolbar: false,
-              withdateranges: true,
-              hide_top_toolbar: false,
-              container_id: 'tvchart',
-              studies: ['Volume@tv-basicstudies']
-            });
-            setTimeout(()=>{
-              if (cont.children.length === 0){
-                log('tv.js did not render, using iframe fallback');
-                setStatus('TradingView widget niet beschikbaar voor '+sym+'. Valt terug op iframe.', 'warn');
-                useIframeFallback(sym);
-              } else {
-                setStatus('Chart geladen voor '+sym, 'ok');
-                log('TradingView widget loaded for', sym);
-              }
-            }, 1200);
-          }catch(e){
-            log('TradingView error', e);
-            setStatus('Fout in TradingView widget. Valt terug op iframe.', 'warn');
-            useIframeFallback(sym);
-          }
-        } else {
-          log('TradingView library not ready, using iframe fallback');
-          useIframeFallback(sym);
-        }
-      }
-      tryNext();
-    }
-
-    $('#reloadChart').addEventListener('click', ()=>loadChart(true));
-    el.symbol.addEventListener('change', ()=>loadChart(true));
-
-    loadCfg();
-    compute();
-    setTimeout(loadChart, 600);
-  })();
-  </script>
+  <script type="module" src="./ui.js"></script>
 </body>
 </html>
