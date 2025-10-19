@@ -3,54 +3,106 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>ARK Spread Calculator + Live Chart (Debug)</title>
   <meta name="theme-color" content="#0b0e12">
   <style>
     :root{
-      --bg:#0b0e12; --panel:#151a22; --panel-2:#1d2330; --acc:#c8a76a; --text:#e8ebf0; --muted:#9aa3b2;
-      --good:#0fb26f; --bad:#ff5a5f; --warn:#ffb020; --focus:#3aa2ff; --shadow:0 8px 30px rgba(0,0,0,.35); --radius:16px;
+      --bg:#0b0e12; --panel:#141922; --panel-2:#1a2130; --acc:#c8a76a; --text:#f1f3f7; --muted:#8892a3;
+      --good:#0fb26f; --bad:#ff5a5f; --warn:#ffb020; --focus:#3aa2ff; --shadow:0 12px 24px rgba(0,0,0,.28); --radius:20px;
+      --space:18px;
     }
-    *{box-sizing:border-box}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
-      background:radial-gradient(1200px 800px at 70% -10%,#1b2230 0%,#0b0e12 45%) fixed;color:var(--text);line-height:1.5}
-    header{padding:20px 16px 0;position:sticky;top:0;z-index:5;background:linear-gradient(180deg,rgba(11,14,18,.95),rgba(11,14,18,.6) 70%,rgba(11,14,18,0));backdrop-filter:blur(6px)}
-    .wrap{max-width:1060px;margin:0 auto;padding:16px}
-    h1{font-size:1.25rem;margin:0 0 6px;font-weight:700;letter-spacing:.2px}
-    .sub{color:var(--muted);font-size:.93rem;margin-bottom:12px}
-    .grid{display:grid;gap:14px}
-    @media(min-width:980px){.grid{grid-template-columns:1.1fr 1fr}}
-    .card{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
-    .card h2{font-size:1rem;margin:0 0 8px;font-weight:700;letter-spacing:.2px}
-    .row{display:grid;grid-template-columns:1fr 160px;gap:8px;align-items:center;margin:8px 0}
-    .row span.label{color:var(--muted);font-size:.9rem}
-    input[type=number], select{width:100%;padding:10px 12px;border-radius:12px;background:#0e131b;color:var(--text);border:1px solid rgba(255,255,255,.08);outline:none;font-size:.98rem}
-    input[type=number]:focus, select:focus{border-color:var(--focus);box-shadow:0 0 0 3px rgba(58,162,255,.15)}
-    .note{color:var(--muted);font-size:.85rem;margin-top:6px}
-    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    button{appearance:none;border:1px solid rgba(255,255,255,.08);background:#0f141c;color:var(--text);padding:10px 14px;border-radius:12px;font-weight:600}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+      background:#0b0e12;
+      color:var(--text);
+      line-height:1.45;
+    }
+    header{
+      padding:calc(12px + env(safe-area-inset-top,0)) var(--space) 4px;
+      position:sticky;
+      top:0;
+      z-index:5;
+      background:rgba(11,14,18,.94);
+      backdrop-filter:blur(8px);
+      border-bottom:1px solid rgba(255,255,255,.06);
+    }
+    .wrap{max-width:1060px;margin:0 auto;padding:0 var(--space) var(--space)}
+    h1{font-size:1.35rem;margin:0 0 4px;font-weight:700;letter-spacing:.1px}
+    .sub{color:var(--muted);font-size:.95rem;margin:0 0 16px;max-width:38ch}
+    .grid{display:grid;gap:var(--space)}
+    @media(min-width:960px){
+      .grid{grid-template-columns:1.05fr 1fr;gap:24px}
+    }
+    .card{
+      background:linear-gradient(160deg,var(--panel),var(--panel-2));
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:var(--space);
+      display:flex;
+      flex-direction:column;
+      gap:var(--space);
+    }
+    .card h2{font-size:1.05rem;margin:0;font-weight:700;letter-spacing:.15px}
+    .row{display:flex;flex-direction:column;gap:8px;margin:0}
+    @media(min-width:640px){.row{flex-direction:row;align-items:center;justify-content:space-between}}
+    .row span.label{color:var(--muted);font-size:.92rem;flex:1}
+    input[type=number], select{
+      width:100%;
+      padding:14px 16px;
+      border-radius:14px;
+      background:#0d131c;
+      color:var(--text);
+      border:1px solid rgba(255,255,255,.12);
+      outline:none;
+      font-size:1rem;
+      -webkit-appearance:none;
+      min-height:52px;
+    }
+    input[type=number]:focus, select:focus{border-color:var(--focus);box-shadow:0 0 0 2px rgba(58,162,255,.18)}
+    .note{color:var(--muted);font-size:.88rem}
+    .actions{display:flex;flex-wrap:wrap;gap:10px}
+    button{
+      appearance:none;
+      border:1px solid rgba(255,255,255,.12);
+      background:#121924;
+      color:var(--text);
+      padding:14px 18px;
+      border-radius:14px;
+      font-weight:600;
+      font-size:1rem;
+      min-height:52px;
+      flex:1;
+      touch-action:manipulation;
+    }
     button.primary{background:linear-gradient(180deg,#233148,#1a2434);border-color:#334055}
     button.accent{background:linear-gradient(180deg,#3a2f1a,#2a2419);border-color:#5b4a2b;color:var(--acc)}
-    .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-    @media(min-width:640px){.kpis{grid-template-columns:repeat(3,1fr)}}
-    .pill{background:#0e131b;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 12px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+    @media(min-width:520px){button{flex:0 1 auto;min-width:160px}}
+    .kpis{display:grid;grid-template-columns:1fr;gap:10px}
+    @media(min-width:480px){.kpis{grid-template-columns:repeat(2,1fr)}}
+    @media(min-width:760px){.kpis{grid-template-columns:repeat(3,1fr)}}
+    .pill{background:#0d131c;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;gap:8px;align-items:center}
     .pill .val{font-weight:700}
-    .ok{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)} .yesno{font-weight:800;letter-spacing:.3px}
-    footer{padding:30px 16px;color:var(--muted);text-align:center}
-    .small{font-size:.85rem}
-    .hr{height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.06),transparent);margin:10px 0}
-    a{color:var(--acc);text-decoration:none}
-    /* Chart container */
-    #chartWrap{height:420px;border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.06);background:#0e131b}
-    @media(min-width:980px){#chartWrap{height:520px}}
-    #status{margin:8px 0 0;color:var(--muted);font-size:.85rem}
+    .ok{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)} .yesno{font-weight:800;letter-spacing:.2px}
+    footer{padding:28px var(--space) calc(28px + env(safe-area-inset-bottom,0));color:var(--muted);text-align:center;font-size:.85rem}
+    .hr{height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);margin:4px 0}
+    #chartWrap{height:360px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.08);background:#0d131c}
+    @media(min-width:960px){#chartWrap{height:520px}}
+    #status{margin-top:-6px;color:var(--muted);font-size:.9rem}
     #status.ok{color:var(--good)} #status.bad{color:var(--bad)} #status.warn{color:var(--warn)}
+    @media (prefers-reduced-motion: reduce){
+      *,*::before,*::after{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;scroll-behavior:auto !important}
+    }
   </style>
 </head>
 <body>
   <header class="wrap">
-    <h1>ARK Spread Calculator + Live Chart</h1>
-    <div class="sub">Plak <strong>bid/ask</strong>, zie spread & limieten, en volg live de koers. Als Bitvavo niet werkt in TradingView, val terug op Binance.</div>
+    <h1>ARK Spread calculator</h1>
+    <div class="sub">Plak je <strong>bid/ask</strong>, check direct de marge en open de chart.</div>
   </header>
 
   <main class="wrap grid">
@@ -78,7 +130,7 @@
         <button class="primary" id="pasteBidAsk">Plak bid/ask</button>
         <button id="resetLive">Reset</button>
       </div>
-      <div class="note small">Gebruik <b>LIMIT</b>-orders. Trade alleen wanneer <b>Net edge ≥ Min edge</b>.</div>
+      <div class="note">Gebruik <strong>LIMIT</strong>-orders en handel alleen bij een net edge boven je minimum.</div>
     </section>
 
     <section class="card" id="cfg">
@@ -103,13 +155,13 @@
         <button id="reloadChart">Herlaad chart</button>
       </div>
       <div id="status" class="">Status: initialiseren…</div>
-      <div class="note small">Als <b>BITVAVO:ARKEUR</b> niet beschikbaar is in TradingView, schakelt de app automatisch naar <b>BINANCE:ARKUSDT</b>. Zie de statusregel boven de chart.</div>
+      <div class="note">Werkt <strong>BITVAVO:ARKEUR</strong> niet? De app schakelt automatisch naar <strong>BINANCE</strong>. Controleer de status boven de chart.</div>
       <div class="hr"></div>
       <div id="chartWrap"><div id="tvchart" style="width:100%;height:100%"></div></div>
     </section>
   </main>
 
-  <footer><div class="small">Client-side • Geen data verstuurd • TradingView-widget (of iframe fallback)</div></footer>
+  <footer>Client-side • Geen data verstuurd • TradingView-widget (fallback beschikbaar)</footer>
 
   <!-- TradingView library -->
   <script src="https://s3.tradingview.com/tv.js"></script>
@@ -127,8 +179,7 @@
     const out = { mid:$('#mid'), spread:$('#spread'), rtfee:$('#rtfee'), edge:$('#edge'), breakeven:$('#breakeven'), eligible:$('#eligible'), buy:$('#buy'), sell:$('#sell'), pnl:$('#pnl') };
 
     function loadCfg(){ try{ const cfg = JSON.parse(localStorage.getItem('ark_spread_cfg')||"{}"); for(const k of ["maker","taker","slip","minedge","maxpos","tick","symbol"]) if(cfg[k]!=null) el[k].value = cfg[k]; }catch(e){} }
-    function saveCfg(){ const cfg = Object.fromEntries(["maker","taker","slip","minedge","maxpos","tick","symbol"].map(k=>[k,el[k].value])); localStorage.setItem('ark_spread_cfg', JSON.stringify(cfg)); flash($('#saveCfg')); }
-    function flash(node){ node&&node.animate([{transform:'scale(1)'},{transform:'scale(1.04)'},{transform:'scale(1)'}],{duration:300}); }
+    function saveCfg(){ const cfg = Object.fromEntries(["maker","taker","slip","minedge","maxpos","tick","symbol"].map(k=>[k,el[k].value])); localStorage.setItem('ark_spread_cfg', JSON.stringify(cfg)); setStatus('Config opgeslagen', 'ok'); }
 
     function num(v){ if(v===""||v==null||isNaN(+v)) return NaN; return +v; }
     function floorTick(x,t){ return Math.floor(x/t)*t; }
@@ -154,7 +205,7 @@
           const a = m.map(s=>+s.replace(',','.')).filter(x=>!isNaN(x));
           const b=Math.min(a[0],a[1]); const s=Math.max(a[0],a[1]);
           el.bid.value=b.toFixed(4); el.ask.value=s.toFixed(4);
-          flash($('#pasteBidAsk')); compute(); setStatus('Bid/ask geplakt van klembord', 'ok');
+          compute(); setStatus('Bid/ask geplakt van klembord', 'ok');
         } else {
           setStatus('Kon geen twee getallen vinden in klembord', 'warn');
         }
@@ -167,7 +218,7 @@
     ['bid','ask','pos','maker','taker','slip','minedge','maxpos','tick'].forEach(k=> el[k].addEventListener('input', compute, {passive:true}));
 
     // Save/reset config
-    $('#saveCfg').addEventListener('click', ()=>{ saveCfg(); setStatus('Config opgeslagen', 'ok'); });
+    $('#saveCfg').addEventListener('click', saveCfg);
     $('#resetCfg').addEventListener('click', ()=>{
       localStorage.removeItem('ark_spread_cfg');
       const d={maker:'0.25',taker:'0.25',slip:'0.05',minedge:'0.20',maxpos:'500',tick:'0.0001',symbol:'BITVAVO:ARKEUR'};
