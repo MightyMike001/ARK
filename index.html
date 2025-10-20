@@ -1,454 +1,338 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Bitvavo Spread Monitor — v2</title>
-<style>
-  :root{
-    --bg:#f4f5f9;
-    --panel:#ffffff;
-    --ink:#1c1c1e;
-    --muted:#6c6c70;
-    --accent:#0a84ff;
-    --accent-soft:#e5f1ff;
-    --line:#e3e5ea;
-    --shadow:0 18px 40px rgba(15,23,42,0.08);
-    --good:#34c759;
-    --bad:#ff3b30;
-  }
-  html,body{height:100%}
-  body{
-    margin:0;
-    background:var(--bg);
-    color:var(--ink);
-    font:15px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
-  .wrap{max-width:1180px;margin:32px auto 48px;padding:0 20px}
-  h1{font-size:28px;font-weight:700;margin:0 0 20px;letter-spacing:-0.01em}
-  .pill{display:inline-flex;align-items:center;padding:4px 12px;border:1px solid var(--line);border-radius:999px;margin-left:12px;color:var(--muted);font-size:12px;background:#fff;box-shadow:inset 0 -1px 0 rgba(0,0,0,0.04)}
-  .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:20px}
-  .panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
-  .panel h2{margin:0;padding:16px 20px;border-bottom:1px solid var(--line);font-size:16px;font-weight:600;color:var(--ink)}
-  .panel .body{padding:20px}
-  label{display:block;margin-bottom:14px;font-weight:600;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-  label > .flex, label > input, label > select{margin-top:6px}
-  select,input{
-    background:#f9fafc;
-    color:var(--ink);
-    border:1px solid var(--line);
-    border-radius:14px;
-    padding:12px 14px;
-    width:100%;
-    font-size:15px;
-    transition:border-color .2s, box-shadow .2s;
-  }
-  select:focus,input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,0.15)}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px}
-  .stat{background:#f9fafc;border:1px solid var(--line);border-radius:16px;padding:14px 16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.7)}
-  .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
-  .v{font-weight:600;font-size:18px;color:var(--ink)}
-  .ok{color:var(--good)} .warn{color:var(--bad)}
-  canvas{display:block;width:100%;height:420px;background:linear-gradient(180deg,#fefeff 0%,#f3f5fa 100%);border-bottom:1px solid var(--line)}
-  .footer{padding:16px 20px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);background:#f9fafc}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-  button{
-    cursor:pointer;
-    background:var(--accent);
-    color:#fff;
-    border:none;
-    border-radius:14px;
-    padding:12px 18px;
-    font-size:15px;
-    font-weight:600;
-    box-shadow:0 10px 18px rgba(10,132,255,0.18);
-    transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;
-  }
-  button:active{transform:scale(.97);box-shadow:0 6px 12px rgba(10,132,255,0.25)}
-  button:focus{outline:none;filter:brightness(1.05)}
-  #btnStop{background:var(--bad);box-shadow:0 10px 18px rgba(255,59,48,0.18)}
-  #btnStop:active{box-shadow:0 6px 12px rgba(255,59,48,0.28)}
-  #btnOnce,#btnExport{background:#fff;color:var(--accent);box-shadow:inset 0 -1px 0 rgba(0,0,0,0.05),0 8px 16px rgba(15,23,42,0.08)}
-  #btnOnce:focus,#btnExport:focus{filter:none;box-shadow:inset 0 -1px 0 rgba(0,0,0,0.04),0 0 0 3px rgba(10,132,255,0.15)}
-  #btnAdd{padding:12px 16px}
-  .hint{color:var(--muted);font-size:13px;margin-top:16px;line-height:1.7}
-  .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .tags{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}
-  .tag{border:1px solid var(--line);border-radius:999px;padding:8px 14px;background:var(--accent-soft);color:var(--accent);cursor:pointer;font-size:13px;font-weight:600;box-shadow:none}
-  .tag:hover{border-color:var(--accent);background:rgba(10,132,255,0.18)}
-  .divider{height:1px;background:var(--line);margin:16px 0}
-  .rightline{border-left:none}
-  .link{color:var(--accent);text-decoration:none;font-weight:600}
-  .link:hover{text-decoration:underline}
-  @media (max-width: 980px){
-    .grid{grid-template-columns:1fr;gap:16px}
-    h1{font-size:24px}
-    .panel .body{padding:20px 16px 24px}
-  }
-  @media (max-width:640px){
-    .row{grid-template-columns:1fr}
-    .flex{width:100%}
-    .flex button{flex:1 1 auto}
-  }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bitvavo Spread Monitor</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f141d;
+      --fg: #f5f7fa;
+      --muted: #9aa3ad;
+      --accent: #3ca66a;
+      --warn: #e86a4a;
+      --card: rgba(18, 24, 33, 0.82);
+      --border: rgba(255, 255, 255, 0.06);
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: radial-gradient(circle at 20% 20%, rgba(60, 166, 106, 0.12), transparent 60%),
+        radial-gradient(circle at 80% 10%, rgba(82, 111, 255, 0.12), transparent 55%),
+        var(--bg);
+      color: var(--fg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    main {
+      flex: 1;
+      width: min(960px, 90vw);
+      margin: 0 auto;
+      padding: 48px 0 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 6vw, 40px);
+      letter-spacing: -0.02em;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      font-size: 14px;
+      color: var(--fg);
+      background: rgba(255, 255, 255, 0.08);
+      width: fit-content;
+    }
+
+    .status[data-tone="ok"] {
+      background: rgba(60, 166, 106, 0.18);
+      color: var(--fg);
+    }
+
+    .status[data-tone="warn"] {
+      background: rgba(232, 106, 74, 0.18);
+      color: #ffb8a4;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px clamp(20px, 5vw, 32px);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 20px 40px rgba(15, 20, 29, 0.28);
+    }
+
+    .grid {
+      display: grid;
+      gap: 20px;
+    }
+
+    .grid-two {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    form {
+      display: grid;
+      gap: 16px;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    input,
+    select,
+    button {
+      font: inherit;
+    }
+
+    input,
+    select {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: inherit;
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 15px;
+      transition: border-color 0.2s ease, background 0.2s ease;
+    }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: rgba(60, 166, 106, 0.6);
+      background: rgba(60, 166, 106, 0.12);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      color: var(--bg);
+      background: var(--accent);
+      box-shadow: 0 12px 25px rgba(60, 166, 106, 0.35);
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 28px rgba(60, 166, 106, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button.secondary {
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--fg);
+      box-shadow: none;
+    }
+
+    dl {
+      margin: 0;
+      display: grid;
+      gap: 14px;
+    }
+
+    dt {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    dd {
+      margin: 4px 0 0;
+      font-size: clamp(20px, 4vw, 32px);
+      font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+      color: var(--fg);
+    }
+
+    small {
+      display: block;
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 640px) {
+      main {
+        padding-top: 32px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+    }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Bitvavo Spread Monitor <span class="pill mono">GET /v2/{market}/book</span></h1>
-  <div class="grid">
-    <div class="panel">
-      <h2>Orderboekvisualisatie (bids/asks) & spread</h2>
-      <canvas id="bookCanvas" width="1280" height="460"></canvas>
-      <div class="footer mono" id="status">Status: klaar…</div>
-    </div>
+  <main>
+    <header>
+      <h1>Bitvavo Spread Monitor</h1>
+      <span class="status" data-status data-tone="neutral">Initialiseren…</span>
+    </header>
 
-    <div class="panel rightline">
-      <h2>Instellingen & cijfers</h2>
-      <div class="body">
-        <div class="row">
-          <label>Market (bijv. <span class="mono">ARK-EUR</span>)
-            <div class="flex">
-              <input id="marketInput" placeholder="ARK-EUR" value="ARK-EUR"/>
-              <button id="btnAdd">+ Voeg toe</button>
-            </div>
+    <section class="card">
+      <form id="settingsForm" autocomplete="off">
+        <div class="grid-two">
+          <label>
+            Market
+            <input id="market" value="ARK-EUR" spellcheck="false" />
           </label>
-          <label>Diepte (levels)
-            <select id="depth">
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="50" selected>50</option>
-              <option value="100">100</option>
-            </select>
+          <label>
+            Diepte (levels)
+            <input id="depth" type="number" min="1" value="25" />
+          </label>
+          <label>
+            Interval (s)
+            <input id="interval" type="number" min="1" value="5" />
+          </label>
+          <label>
+            Maker fee (%)
+            <input id="makerFee" type="number" min="0" step="0.01" value="0.15" />
+          </label>
+          <label>
+            Taker fee (%)
+            <input id="takerFee" type="number" min="0" step="0.01" value="0.25" />
+          </label>
+          <label>
+            Route
+            <select id="route"></select>
+          </label>
+          <label>
+            Slippage (%)
+            <input id="slippage" type="number" min="0" step="0.01" value="0.05" />
+          </label>
+          <label>
+            Min. edge (%)
+            <input id="minEdge" type="number" min="0" step="0.01" value="0.25" />
+          </label>
+          <label>
+            Positie (€)
+            <input id="position" type="number" min="0" step="0.01" value="250" />
+          </label>
+          <label>
+            Tick size
+            <input id="tick" type="number" min="0" step="0.00000001" value="0.0001" />
           </label>
         </div>
-
-        <div>
-          <div class="k">Snelle selectie</div>
-          <div class="tags" id="tags"></div>
-          <div class="divider"></div>
+        <div class="actions">
+          <button id="btnStart" type="submit">Start</button>
+          <button id="btnStop" class="secondary" type="button">Stop</button>
         </div>
+      </form>
+    </section>
 
-        <div class="row">
-          <label>Ververs elke (s)
-            <input id="refresh" type="number" min="2" step="1" value="5">
-          </label>
-          <label>Ordergrootte voor impact (€)
-            <input id="impactSize" type="number" min="50" step="50" value="1000">
-          </label>
-        </div>
-
-        <div class="flex" style="margin:10px 0 12px">
-          <button id="btnStart">Start</button>
-          <button id="btnStop">Stop</button>
-          <button id="btnOnce">Eenmalig ophalen</button>
-          <button id="btnExport">Export CSV</button>
-        </div>
-
-        <div class="stats">
-          <div class="stat">
-            <div class="k">Best Bid</div>
-            <div class="v mono" id="bestBid">–</div>
+    <section class="card grid-two">
+      <div>
+        <dl>
+          <div>
+            <dt>Best Bid</dt>
+            <dd data-best-bid>–</dd>
           </div>
-          <div class="stat">
-            <div class="k">Best Ask</div>
-            <div class="v mono" id="bestAsk">–</div>
+          <div>
+            <dt>Best Ask</dt>
+            <dd data-best-ask>–</dd>
           </div>
-          <div class="stat">
-            <div class="k">Spread (abs)</div>
-            <div class="v mono" id="spreadAbs">–</div>
+          <div>
+            <dt>Spread</dt>
+            <dd><span data-spread-abs>–</span> • <span data-spread-pct>–</span></dd>
           </div>
-          <div class="stat">
-            <div class="k">Spread (%)</div>
-            <div class="v mono" id="spreadPct">–</div>
-          </div>
-          <div class="stat">
-            <div class="k">Geschatte buy-impact</div>
-            <div class="v mono" id="impactBuy">–</div>
-          </div>
-          <div class="stat">
-            <div class="k">Geschatte sell-impact</div>
-            <div class="v mono" id="impactSell">–</div>
-          </div>
-        </div>
-
-        <div class="hint">
-          ✦ De impact-schatting simuleert een marktorder van het opgegeven bedrag tegen asks (buy) of bids (sell).<br>
-          ✦ Endpoint: <a class="link" href="https://docs.bitvavo.com/docs/rest-api/get-order-book" target="_blank" rel="noopener">Bitvavo REST — Order book</a> (publiek, geen API-key nodig).
-        </div>
+        </dl>
       </div>
-    </div>
-  </div>
-</div>
+      <div>
+        <dl>
+          <div>
+            <dt>Koop</dt>
+            <dd data-buy>–</dd>
+          </div>
+          <div>
+            <dt>Verkoop</dt>
+            <dd data-sell>–</dd>
+          </div>
+          <div>
+            <dt>Edge</dt>
+            <dd data-edge>–</dd>
+          </div>
+        </dl>
+      </div>
+      <div>
+        <dl>
+          <div>
+            <dt>Break-even</dt>
+            <dd data-breakeven>–</dd>
+          </div>
+          <div>
+            <dt>Roundtrip fees</dt>
+            <dd data-fees>–</dd>
+          </div>
+          <div>
+            <dt>P&amp;L / cyclus</dt>
+            <dd data-pnl>–</dd>
+          </div>
+        </dl>
+      </div>
+      <div>
+        <dl>
+          <div>
+            <dt>24h volume</dt>
+            <dd data-volume>–</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd data-updated>Laatste update: –</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
 
-<script>
-const $ = sel => document.querySelector(sel);
-const statusEl = $('#status');
-const cvs = $('#bookCanvas');
-const ctx = cvs.getContext('2d', { alpha: false });
-
-let timer = null;
-const MAX_TAGS = 16;
-const TOP_SPREAD_LIMIT = 10;
-const FALLBACK_MARKETS = [
-  'ARK-EUR','BTC-EUR','ETH-EUR','XRP-EUR','ADA-EUR','SOL-EUR','DOT-EUR','DOGE-EUR',
-  'MATIC-EUR','AVAX-EUR','ATOM-EUR','LINK-EUR','HBAR-EUR','EGLD-EUR','SAND-EUR','BCH-EUR'
-];
-let markets = [...FALLBACK_MARKETS];
-let spreadByMarket = {};
-let hasSpreadMarkets = false;
-const tagsEl = $('#tags');
-
-function renderTags(){
-  tagsEl.innerHTML = '';
-  markets.forEach(m => {
-    const b = document.createElement('button');
-    b.className = 'tag mono';
-    const spread = spreadByMarket[m];
-    b.textContent = spread ? `${m} • ${(spread*100).toFixed(2)}%` : m;
-    b.title = 'Klik om deze market te laden';
-    b.onclick = () => { $('#marketInput').value = m; fetchAndRender().catch(e => status('Fout: '+e.message)); };
-    tagsEl.appendChild(b);
-  });
-}
-
-function setMarkets(list, opts={}){
-  markets = list.slice(0, MAX_TAGS);
-  if(opts.resetSpread){
-    spreadByMarket = {};
-    hasSpreadMarkets = false;
-  }
-  renderTags();
-}
-
-async function loadMarketsFromApi(){
-  try {
-    const res = await fetch('https://api.bitvavo.com/v2/markets', { method: 'GET', mode: 'cors', cache: 'no-store' });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const payload = await res.json();
-    const list = Array.isArray(payload)? payload : (Array.isArray(payload?.markets)? payload.markets : []);
-    if(!list.length) return;
-    const eurMarkets = list
-      .map(item => ({
-        market: item?.market,
-        quote: item?.quote,
-        status: typeof (item?.status ?? item?.marketStatus) === 'string'
-          ? (item.status ?? item.marketStatus).toLowerCase()
-          : ''
-      }))
-      .filter(item => {
-        if(!item.market || typeof item.market !== 'string') return false;
-        if(item.quote && item.quote !== 'EUR') return false;
-        if(!/-EUR$/i.test(item.market)) return false;
-        if(item.status && item.status !== 'trading' && item.status !== 'auction') return false;
-        return true;
-      })
-      .map(item => item.market.toUpperCase())
-      .sort();
-    if(!eurMarkets.length) return;
-    const preferred = new Set(FALLBACK_MARKETS);
-    const deduped = [];
-    const pushUnique = (value) => {
-      if(!value) return;
-      if(deduped.includes(value)) return;
-      deduped.push(value);
-    };
-    FALLBACK_MARKETS.forEach(pushUnique);
-    eurMarkets.forEach(m => { if(!preferred.has(m)) pushUnique(m); });
-    if(!hasSpreadMarkets){
-      setMarkets(deduped, { resetSpread: true });
-    }
-  } catch(err) {
-    console.warn('Kon markets niet laden', err);
-  }
-}
-
-async function loadTopSpreadMarkets(){
-  try {
-    const res = await fetch('https://api.bitvavo.com/v2/ticker/book', { method: 'GET', mode: 'cors', cache: 'no-store' });
-    if(!res.ok) throw new Error(`HTTP ${res.status}`);
-    const payload = await res.json();
-    const list = Array.isArray(payload)? payload : (Array.isArray(payload?.markets)? payload.markets : []);
-    if(!list.length) return;
-    const spreads = list
-      .map(item => {
-        const market = typeof item?.market === 'string' ? item.market.toUpperCase() : '';
-        if(!/-EUR$/i.test(market)) return null;
-        const bestBid = parseFloat(item?.bestBid ?? item?.bid ?? item?.bidPrice ?? item?.bestBidPrice);
-        const bestAsk = parseFloat(item?.bestAsk ?? item?.ask ?? item?.askPrice ?? item?.bestAskPrice);
-        if(!isFinite(bestBid) || !isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0 || bestAsk <= bestBid) return null;
-        const spreadAbs = bestAsk - bestBid;
-        const mid = (bestAsk + bestBid) / 2;
-        if(!isFinite(mid) || mid <= 0) return null;
-        return { market, spreadPct: spreadAbs / mid };
-      })
-      .filter(Boolean)
-      .sort((a,b) => b.spreadPct - a.spreadPct)
-      .slice(0, TOP_SPREAD_LIMIT);
-    if(!spreads.length) return;
-    spreadByMarket = spreads.reduce((acc, item) => { acc[item.market] = item.spreadPct; return acc; }, {});
-    hasSpreadMarkets = true;
-    setMarkets(spreads.map(item => item.market));
-  } catch(err) {
-    console.warn('Kon spreads niet laden', err);
-  }
-}
-
-renderTags();
-loadTopSpreadMarkets().finally(() => { loadMarketsFromApi(); });
-
-$('#btnAdd').onclick = () => {
-  const val = ($('#marketInput').value||'').trim().toUpperCase();
-  if (!val) return;
-  if (!markets.includes(val)) { markets.unshift(val); if (markets.length>MAX_TAGS) markets.pop(); renderTags(); }
-};
-
-function fmt(n, dp=5) {
-  if (n === null || n === undefined || isNaN(n)) return '–';
-  const digits = (n>1? 4 : 8); // iets meer precisie bij kleine prijzen
-  return n.toLocaleString('nl-NL', { maximumFractionDigits: Math.max(dp,digits) });
-}
-function pct(x){ return (x*100).toLocaleString('nl-NL',{maximumFractionDigits:3}) + '%'; }
-
-async function fetchOrderBook(market, depth){
-  const url = `https://api.bitvavo.com/v2/${encodeURIComponent(market)}/book?depth=${encodeURIComponent(depth)}`;
-  const res = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const bids = (data.bids||[]).map(r => [parseFloat(r[0]), parseFloat(r[1])]).filter(x => x[0] && x[1]);
-  const asks = (data.asks||[]).map(r => [parseFloat(r[0]), parseFloat(r[1])]).filter(x => x[0] && x[1]);
-  if (!bids.length || !asks.length) throw new Error('Leeg orderboek');
-  return { market, bids, asks };
-}
-
-function simulateImpactEUR(euros, sideLevels){
-  if (!euros || !sideLevels?.length) return null;
-  let remaining = euros, notional = 0, qty = 0;
-  for (const [p, s] of sideLevels){
-    const lot = p*s;
-    if (lot >= remaining){
-      const take = remaining / p;
-      notional += take * p; qty += take; remaining = 0; break;
-    } else {
-      notional += lot; qty += s; remaining -= lot;
-    }
-  }
-  if (remaining>0 || qty===0) return null; // onvoldoende diepte
-  return { avgPrice: notional/qty, qty };
-}
-
-function draw(bids, asks, bestBid, bestAsk, spreadPct){
-  const w=cvs.width, h=cvs.height; ctx.clearRect(0,0,w,h);
-  // bg
-  ctx.fillStyle = '#0d121a'; ctx.fillRect(0,0,w,h);
-  // grid
-  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
-  ctx.lineWidth=1; ctx.globalAlpha=0.4;
-  for(let i=1;i<=6;i++){ const y=(h/7)*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
-  ctx.globalAlpha=1;
-
-  // header text
-  ctx.fillStyle = '#9aa3ad'; ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
-  ctx.fillText(`Best Bid: ${bestBid.toFixed(8)}   Best Ask: ${bestAsk.toFixed(8)}   Spread: ${(bestAsk-bestBid).toFixed(8)}  (${(spreadPct*100).toFixed(3)}%)`, 12, 18);
-
-  // bars
-  const maxBidAmt = Math.max(...bids.map(b=>b[1]));
-  const maxAskAmt = Math.max(...asks.map(a=>a[1]));
-  const barH=10,gap=2, midY=Math.floor(h*0.55), left=12, right=w-12;
-  const maxBars = Math.min(40, Math.max(bids.length, asks.length));
-
-  // BIDS (groen, naar beneden)
-  let y=midY; ctx.textAlign='left';
-  bids.slice(0,maxBars).forEach(([p,s],i)=>{
-    y += barH+gap; const len = (s/maxBidAmt)*(w*0.44);
-    ctx.fillStyle='#1b2a22'; ctx.fillRect(left,y,len,barH);
-    ctx.fillStyle='#3ca66a'; ctx.fillRect(left,y,Math.max(1,len),barH);
-    if(i<12){ ctx.fillStyle='#9aa3ad'; ctx.fillText(p.toFixed(8), left+len+8, y+barH-2); }
-  });
-
-  // ASKS (rood, naar boven)
-  y=midY; ctx.textAlign='right';
-  asks.slice(0,maxBars).forEach(([p,s],i)=>{
-    y -= barH+gap; const len=(s/maxAskAmt)*(w*0.44);
-    ctx.fillStyle='#2a1d1d'; ctx.fillRect(right-len,y,len,barH);
-    ctx.fillStyle='#c44'; ctx.fillRect(right-len,y,Math.max(1,len),barH);
-    if(i<12){ ctx.fillStyle='#9aa3ad'; ctx.fillText(p.toFixed(8), right-len-8, y+barH-2); }
-  });
-
-  // Spread band
-  const mid=(bestAsk+bestBid)/2, pxPer=(w*0.35);
-  const spreadPx=Math.min(160, Math.max(6, (bestAsk-bestBid)/mid*pxPer));
-  const cx=w/2; ctx.globalAlpha=.16; ctx.fillStyle='#c44'; ctx.fillRect(cx, 36, spreadPx/2, 38);
-  ctx.fillStyle='#3ca66a'; ctx.fillRect(cx-spreadPx/2, 36, spreadPx/2, 38);
-  ctx.globalAlpha=1; ctx.strokeStyle='#2d3746'; ctx.strokeRect(cx-spreadPx/2, 36, spreadPx, 38);
-  ctx.fillStyle='#e8edf3'; ctx.textAlign='center'; ctx.font='13px ui-monospace, Menlo, Consolas, monospace';
-  ctx.fillText(`Spread ${((bestAsk-bestBid)/mid*100).toFixed(3)}%`, cx, 59);
-}
-
-function status(msg){ statusEl.textContent = msg; }
-
-async function fetchAndRender(){
-  const market = ($('#marketInput').value||'').trim().toUpperCase();
-  if(!/^[A-Z0-9]+-[A-Z]{3,5}$/.test(market)) throw new Error('Ongeldige market (bijv. ARK-EUR)');
-  const depth = parseInt($('#depth').value,10)||50;
-
-  const t0=performance.now(); status(`Ophalen orderboek: ${market} …`);
-  const { bids, asks } = await fetchOrderBook(market, depth);
-  const bestBid=bids[0][0], bestAsk=asks[0][0];
-  const spreadAbs=bestAsk-bestBid, mid=(bestAsk+bestBid)/2, spreadPct=spreadAbs/mid;
-
-  // impact
-  const euros=Math.max(0, parseFloat($('#impactSize').value)||0);
-  const buy = simulateImpactEUR(euros, asks);
-  const sell = simulateImpactEUR(euros, bids);
-
-  // cijfers
-  $('#bestBid').textContent = fmt(bestBid);
-  $('#bestAsk').textContent = fmt(bestAsk);
-  $('#spreadAbs').textContent = fmt(spreadAbs, 8);
-  const spEl=$('#spreadPct'); spEl.textContent=pct(spreadPct); spEl.className='v mono '+(spreadPct>=0.01? 'warn':'ok');
-  $('#impactBuy').textContent = buy? `${fmt(buy.avgPrice)}  (${pct((buy.avgPrice-bestAsk)/mid)})` : '–';
-  $('#impactSell').textContent = sell? `${fmt(sell.avgPrice)}  (${pct((bestBid-sell.avgPrice)/mid)})` : '–';
-
-  // canvas
-  draw(bids, asks, bestBid, bestAsk, spreadPct);
-  const t1=performance.now(); status(`Orderboek ${market} • depth ${depth} • ${bids.length} bids / ${asks.length} asks • ${Math.round(t1-t0)} ms`);
-}
-
-function start(){
-  stop();
-  fetchAndRender().catch(err => status('Fout: '+err.message));
-  const s=Math.max(2, parseInt($('#refresh').value||'5',10));
-  timer=setInterval(()=>{ fetchAndRender().catch(err => status('Fout: '+err.message)); }, s*1000);
-}
-function stop(){ if(timer){ clearInterval(timer); timer=null; status('Gestopt'); } }
-
-// CSV export van laatste snapshot van bids/asks (na een fetch)
-let lastSnapshot=null;
-const _origFetch = fetchOrderBook;
-fetchOrderBook = async function(market, depth){
-  const r = await _origFetch(market, depth); lastSnapshot=r; return r;
-}
-
-$('#btnExport').onclick = () => {
-  if(!lastSnapshot){ alert('Nog geen data. Klik eerst "Eenmalig ophalen".'); return; }
-  const { market, bids, asks } = lastSnapshot;
-  let csv = `market,side,price,amount\n`;
-  bids.forEach(([p,a])=>{ csv += `${market},bid,${p},${a}\n`; });
-  asks.forEach(([p,a])=>{ csv += `${market},ask,${p},${a}\n`; });
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=`orderbook-${market}.csv`; a.click();
-  URL.revokeObjectURL(url);
-};
-
-$('#btnStart').addEventListener('click', start);
-$('#btnStop').addEventListener('click', stop);
-$('#btnOnce').addEventListener('click', ()=>{ stop(); fetchAndRender().catch(err => status('Fout: '+err.message)); });
-
-// Start met ARK-EUR eenmalig
-fetchAndRender().catch(err => status('Fout: '+err.message));
-</script>
+    <small>
+      De gegevens komen rechtstreeks van Bitvavo. Gebruik deze tool als indicatie en controleer altijd handmatig voordat je orders plaatst.
+    </small>
+  </main>
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
