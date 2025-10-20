@@ -35,12 +35,14 @@
 
     main {
       flex: 1;
-      width: min(960px, 90vw);
+      width: min(1120px, 94vw);
       margin: 0 auto;
-      padding: 48px 0 64px;
+      padding: 32px 24px 40px;
       display: flex;
       flex-direction: column;
       gap: 24px;
+      max-height: 100vh;
+      overflow: auto;
     }
 
     header {
@@ -81,7 +83,7 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 20px;
-      padding: 24px clamp(20px, 5vw, 32px);
+      padding: 20px clamp(20px, 5vw, 28px);
       backdrop-filter: blur(12px);
       box-shadow: 0 20px 40px rgba(15, 20, 29, 0.28);
     }
@@ -240,7 +242,7 @@
     }
 
     .top-spread-panel {
-      margin-top: 24px;
+      margin-top: 16px;
       display: grid;
       gap: 18px;
     }
@@ -286,7 +288,7 @@
 
     .top-spread-chart canvas {
       width: 100%;
-      height: 240px;
+      height: 200px;
       display: block;
       border-radius: 12px;
     }
@@ -337,6 +339,56 @@
         height: 200px;
       }
     }
+
+    @media (min-width: 1024px) {
+      main {
+        display: grid;
+        grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1fr);
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        grid-template-areas:
+          'header header'
+          'form summary'
+          'table table';
+        gap: 20px;
+      }
+
+      header {
+        grid-area: header;
+      }
+
+      .settings-card {
+        grid-area: form;
+        align-self: start;
+      }
+
+      .summary-card {
+        grid-area: summary;
+      }
+
+      .table-card {
+        grid-area: table;
+        display: grid;
+        gap: 20px;
+      }
+
+      .table-wrapper {
+        max-height: 320px;
+        overflow-y: auto;
+      }
+
+      .top-spread-panel {
+        grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+        align-items: stretch;
+      }
+
+      .top-spread-panel > *:first-child {
+        align-self: stretch;
+      }
+
+      .top-spread-chart canvas {
+        height: 200px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -346,7 +398,7 @@
       <span class="status" data-status data-tone="neutral">Initialiseren…</span>
     </header>
 
-    <section class="card">
+    <section class="card settings-card">
       <form id="settingsForm" autocomplete="off">
         <div class="grid-two">
           <label>
@@ -397,7 +449,7 @@
       </form>
     </section>
 
-    <section class="card grid-two">
+    <section class="card grid-two summary-card">
       <div>
         <dl>
           <div>
@@ -460,7 +512,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card table-card">
       <div class="table-meta">
         <h2>Top 10 spreads (hoog volume)</h2>
         <span>Laatste update: <span data-top-spreads-updated>–</span></span>
