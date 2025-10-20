@@ -30,52 +30,23 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 16px;
       line-height: 1.5;
     }
 
     main {
-      flex: 1;
-      width: min(960px, 92vw);
-      margin: 0 auto;
-      padding: 40px 0 48px;
+      width: min(960px, 100%);
       display: flex;
       flex-direction: column;
       gap: 24px;
-    }
-
-    header {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
     }
 
     h1 {
       margin: 0;
       font-size: clamp(28px, 5vw, 36px);
       letter-spacing: -0.02em;
-    }
-
-    .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 14px;
-      border-radius: 999px;
-      font-size: 13px;
-      color: var(--fg);
-      border: 1px solid var(--border);
-      background: transparent;
-      width: fit-content;
-    }
-
-    .status[data-tone="ok"] {
-      border-color: rgba(34, 197, 94, 0.5);
-      color: var(--fg);
-    }
-
-    .status[data-tone="warn"] {
-      border-color: rgba(249, 115, 22, 0.5);
-      color: #fecba1;
     }
 
     .card {
@@ -86,20 +57,67 @@
       box-shadow: none;
     }
 
-    .grid {
+    .table-card {
+      display: grid;
+      gap: 24px;
+    }
+
+    .table-meta {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    thead th {
+      font-weight: 600;
+      text-align: left;
+      padding: 12px 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    tbody tr.is-selected {
+      background: rgba(34, 197, 94, 0.1);
+    }
+
+    .rank {
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+
+    .table-wrapper {
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    .table-wrapper table {
+      min-width: 100%;
+    }
+
+    .top-spread-panel {
       display: grid;
       gap: 20px;
-    }
-
-    .grid-two {
-      display: grid;
-      gap: 16px;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    }
-
-    form {
-      display: grid;
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     }
 
     label {
@@ -112,407 +130,61 @@
       color: var(--muted);
     }
 
-    input,
-    select,
-    button {
+    select {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--fg);
+      border-radius: 12px;
+      padding: 10px 12px;
       font: inherit;
     }
 
-    input,
-    select {
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.02);
-      color: inherit;
-      border-radius: 12px;
-      padding: 10px 12px;
-      font-size: 15px;
-      transition: border-color 0.2s ease, background 0.2s ease;
-    }
-
-    input:focus,
-    select:focus {
-      outline: none;
-      border-color: rgba(34, 197, 94, 0.5);
-      background: rgba(34, 197, 94, 0.08);
-    }
-
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-
-    button {
-      border: none;
-      border-radius: 12px;
-      padding: 10px 18px;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s ease, transform 0.15s ease;
-      color: var(--bg);
-      background: var(--accent);
-    }
-
-    button:hover {
-      transform: translateY(-1px);
-      background: #16a34a;
-    }
-
-    button:active {
-      transform: translateY(0);
-    }
-
-    button.secondary {
-      background: transparent;
-      color: var(--fg);
-      border: 1px solid var(--border);
-    }
-
-    dl {
-      margin: 0;
-      display: grid;
-      gap: 14px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-
-    thead th {
-      text-align: left;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--muted);
-      padding: 0 12px 8px;
-      font-weight: 600;
-    }
-
-    tbody td {
-      padding: 10px 12px;
-      border-top: 1px solid var(--border);
-      font-variant-numeric: tabular-nums;
-    }
-
-    tbody tr:hover {
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    tbody tr.is-selected {
-      background: rgba(34, 197, 94, 0.14);
-    }
-
-    tbody tr.is-selected:hover {
-      background: rgba(34, 197, 94, 0.18);
-    }
-
-    .table-wrapper {
-      overflow-x: auto;
-    }
-
-    .table-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
-
-    .table-meta h2 {
-      margin: 0;
-      font-size: clamp(20px, 4vw, 26px);
-    }
-
-    .table-meta span {
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    td.rank {
-      width: 1%;
-      font-weight: 600;
-      text-align: center;
-    }
-
-    .top-spread-panel {
-      margin-top: 16px;
-      display: grid;
-      gap: 18px;
-    }
-
-    .top-spread-control {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      align-items: flex-end;
-      justify-content: space-between;
-    }
-
-    .top-spread-control label {
-      flex: 1 1 220px;
-      max-width: 260px;
+    select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .top-spread-current {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
       font-size: 14px;
-      color: var(--muted);
     }
 
     .top-spread-current-market {
-      font-size: clamp(18px, 4vw, 24px);
       font-weight: 600;
-      color: var(--fg);
-    }
-
-    .top-spread-current-value {
-      font-variant-numeric: tabular-nums;
     }
 
     .top-spread-chart {
       position: relative;
-      border: 1px solid var(--border);
+      min-height: 220px;
+      border: 1px solid rgba(148, 163, 184, 0.15);
       border-radius: 16px;
-      background: var(--surface);
-      padding: 12px 16px 16px;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .top-spread-chart canvas {
       width: 100%;
-      height: 200px;
-      display: block;
-      border-radius: 12px;
+      height: 100%;
     }
 
     .top-spread-chart p {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
       margin: 0;
-      font-size: 13px;
       color: var(--muted);
+      font-size: 14px;
       text-align: center;
-      pointer-events: none;
-    }
-
-    dt {
-      font-size: 12px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--muted);
-    }
-
-    dd {
-      margin: 4px 0 0;
-      font-size: clamp(20px, 4vw, 30px);
-      font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
-      color: var(--fg);
-    }
-
-    small {
-      display: block;
-      margin-top: 16px;
-      font-size: 12px;
-      color: var(--muted);
-      text-align: center;
-    }
-
-    @media (max-width: 640px) {
-      main {
-        padding-top: 32px;
-      }
-
-      .card {
-        padding: 24px;
-      }
-
-      .top-spread-chart canvas {
-        height: 200px;
-      }
-    }
-
-    @media (min-width: 1024px) {
-      main {
-        display: grid;
-        grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1fr);
-        grid-template-rows: auto minmax(0, 1fr) auto;
-        grid-template-areas:
-          'header header'
-          'form summary'
-          'table table';
-        gap: 20px;
-      }
-
-      header {
-        grid-area: header;
-      }
-
-      .settings-card {
-        grid-area: form;
-        align-self: start;
-      }
-
-      .summary-card {
-        grid-area: summary;
-      }
-
-      .table-card {
-        grid-area: table;
-        display: grid;
-        gap: 20px;
-      }
-
-      .table-wrapper {
-        max-height: 320px;
-        overflow-y: auto;
-      }
-
-      .top-spread-panel {
-        grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
-        align-items: stretch;
-      }
-
-      .top-spread-panel > *:first-child {
-        align-self: stretch;
-      }
-
-      .top-spread-chart canvas {
-        height: 200px;
-      }
     }
   </style>
 </head>
 <body>
   <main>
-    <header>
-      <h1>Bitvavo Spread Monitor</h1>
-      <span class="status" data-status data-tone="neutral">Initialiseren…</span>
-    </header>
-
-    <section class="card settings-card">
-      <form id="settingsForm" autocomplete="off">
-        <div class="grid-two">
-          <label>
-            Market
-            <input id="market" value="ARK-EUR" spellcheck="false" />
-          </label>
-          <label>
-            Diepte (levels)
-            <input id="depth" type="number" min="1" value="25" />
-          </label>
-          <label>
-            Interval (s)
-            <input id="interval" type="number" min="1" value="5" />
-          </label>
-          <label>
-            Maker fee (%)
-            <input id="makerFee" type="number" min="0" step="0.01" value="0.15" />
-          </label>
-          <label>
-            Taker fee (%)
-            <input id="takerFee" type="number" min="0" step="0.01" value="0.25" />
-          </label>
-          <label>
-            Route
-            <select id="route"></select>
-          </label>
-          <label>
-            Slippage (%)
-            <input id="slippage" type="number" min="0" step="0.01" value="0.05" />
-          </label>
-          <label>
-            Min. edge (%)
-            <input id="minEdge" type="number" min="0" step="0.01" value="0.25" />
-          </label>
-          <label>
-            Positie (€)
-            <input id="position" type="number" min="0" step="0.01" value="250" />
-          </label>
-          <label>
-            Tick size
-            <input id="tick" type="number" min="0" step="0.00000001" value="0.0001" />
-          </label>
-        </div>
-        <div class="actions">
-          <button id="btnStart" type="submit">Start</button>
-          <button id="btnStop" class="secondary" type="button">Stop</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="card grid-two summary-card">
-      <div>
-        <dl>
-          <div>
-            <dt>Best Bid</dt>
-            <dd data-best-bid>–</dd>
-          </div>
-          <div>
-            <dt>Best Ask</dt>
-            <dd data-best-ask>–</dd>
-          </div>
-          <div>
-            <dt>Spread</dt>
-            <dd><span data-spread-abs>–</span> • <span data-spread-pct>–</span></dd>
-          </div>
-        </dl>
-      </div>
-      <div>
-        <dl>
-          <div>
-            <dt>Koop</dt>
-            <dd data-buy>–</dd>
-          </div>
-          <div>
-            <dt>Verkoop</dt>
-            <dd data-sell>–</dd>
-          </div>
-          <div>
-            <dt>Edge</dt>
-            <dd data-edge>–</dd>
-          </div>
-        </dl>
-      </div>
-      <div>
-        <dl>
-          <div>
-            <dt>Break-even</dt>
-            <dd data-breakeven>–</dd>
-          </div>
-          <div>
-            <dt>Roundtrip fees</dt>
-            <dd data-fees>–</dd>
-          </div>
-          <div>
-            <dt>P&amp;L / cyclus</dt>
-            <dd data-pnl>–</dd>
-          </div>
-        </dl>
-      </div>
-      <div>
-        <dl>
-          <div>
-            <dt>24h volume</dt>
-            <dd data-volume>–</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd data-updated>Laatste update: –</dd>
-          </div>
-        </dl>
-      </div>
-    </section>
-
+    <h1>Top 10 spreads (hoog volume)</h1>
     <section class="card table-card">
       <div class="table-meta">
-        <h2>Top 10 spreads (hoog volume)</h2>
         <span>Laatste update: <span data-top-spreads-updated>–</span></span>
       </div>
       <div class="table-wrapper">
@@ -554,10 +226,6 @@
         </div>
       </div>
     </section>
-
-    <small>
-      De gegevens komen rechtstreeks van Bitvavo. Gebruik deze tool als indicatie en controleer altijd handmatig voordat je orders plaatst.
-    </small>
   </main>
   <script type="module" src="./main.js"></script>
 </body>
