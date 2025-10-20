@@ -202,6 +202,14 @@
       background: rgba(255, 255, 255, 0.04);
     }
 
+    tbody tr.is-selected {
+      background: rgba(60, 166, 106, 0.16);
+    }
+
+    tbody tr.is-selected:hover {
+      background: rgba(60, 166, 106, 0.2);
+    }
+
     .table-wrapper {
       overflow-x: auto;
     }
@@ -229,6 +237,70 @@
       width: 1%;
       font-weight: 600;
       text-align: center;
+    }
+
+    .top-spread-panel {
+      margin-top: 24px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .top-spread-control {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: flex-end;
+      justify-content: space-between;
+    }
+
+    .top-spread-control label {
+      flex: 1 1 220px;
+      max-width: 260px;
+    }
+
+    .top-spread-current {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .top-spread-current-market {
+      font-size: clamp(18px, 4vw, 24px);
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    .top-spread-current-value {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .top-spread-chart {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 12px 16px 16px;
+    }
+
+    .top-spread-chart canvas {
+      width: 100%;
+      height: 240px;
+      display: block;
+      border-radius: 12px;
+    }
+
+    .top-spread-chart p {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+      pointer-events: none;
     }
 
     dt {
@@ -259,6 +331,10 @@
 
       .card {
         padding: 20px;
+      }
+
+      .top-spread-chart canvas {
+        height: 200px;
       }
     }
   </style>
@@ -408,6 +484,24 @@
             </tr>
           </tbody>
         </table>
+      </div>
+      <div class="top-spread-panel">
+        <div class="top-spread-control">
+          <label>
+            Selecteer market
+            <select data-top-spreads-select>
+              <option value="">Laden…</option>
+            </select>
+          </label>
+          <div class="top-spread-current">
+            <span class="top-spread-current-market" data-top-spread-selected>–</span>
+            <span class="top-spread-current-value" data-top-spread-current>Spread: –</span>
+          </div>
+        </div>
+        <div class="top-spread-chart">
+          <canvas data-top-spreads-chart></canvas>
+          <p data-top-spread-chart-empty>Niet genoeg data om een grafiek te tonen.</p>
+        </div>
       </div>
     </section>
 
