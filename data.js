@@ -1,5 +1,5 @@
 const BITVAVO_URL = 'wss://ws.bitvavo.com/v2/';
-const MARKET = 'ARKEUR';
+const MARKET = 'ARK-EUR';
 
 const fetchJson = async (url) => {
   const res = await fetch(url, { cache: 'no-store' });
