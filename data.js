@@ -147,23 +147,18 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
           ? (spreadAbs / mid) * 100
           : NaN;
         const volumeEur = Number.isFinite(item.volumeQuote) ? item.volumeQuote : NaN;
-        const score = Number.isFinite(spreadPct) && Number.isFinite(volumeEur)
-          ? spreadPct * Math.log10(volumeEur + 1)
-          : NaN;
-
         return {
           ...item,
           spreadAbs: Number.isFinite(spreadAbs) ? spreadAbs : NaN,
           spreadPct: Number.isFinite(spreadPct) ? spreadPct : NaN,
           volumeEur,
-          score: Number.isFinite(score) ? score : NaN,
         };
       })
-      .filter((item) => item.spreadPct > 0 && item.volumeEur >= minVolumeEur && Number.isFinite(item.score));
+      .filter((item) => item.spreadPct > 0 && item.volumeEur >= minVolumeEur);
 
     const sorted = normalized.sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
       if (b.spreadPct !== a.spreadPct) return b.spreadPct - a.spreadPct;
+      if (b.spreadAbs !== a.spreadAbs) return b.spreadAbs - a.spreadAbs;
       return (b.volumeEur || 0) - (a.volumeEur || 0);
     });
     return sorted.slice(0, limit);
