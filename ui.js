@@ -1,12 +1,82 @@
 import { compute } from './calc.js';
 import { startDataFeed } from './data.js';
 
+const ROUTE_OPTIONS = [
+  { value: 'maker-maker', label: 'Maker/Maker' },
+  { value: 'maker-taker', label: 'Maker/Taker' },
+  { value: 'taker-taker', label: 'Taker/Taker' },
+];
+
+const ROUTE_VALUES = new Set(ROUTE_OPTIONS.map((option) => option.value));
+
+const ensureSettingsControls = () => {
+  const form = document.getElementById('settingsForm');
+  if (!form) return;
+
+  const makerLabel = document.getElementById('makerFee')?.closest('label');
+
+  if (!document.getElementById('takerFee')) {
+    const label = document.createElement('label');
+    const span = document.createElement('span');
+    span.textContent = 'Taker fee (%)';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.01';
+    input.min = '0';
+    input.id = 'takerFee';
+    label.appendChild(span);
+    label.appendChild(input);
+    if (makerLabel?.parentElement) {
+      makerLabel.parentElement.insertBefore(label, makerLabel.nextSibling);
+    } else {
+      form.appendChild(label);
+    }
+  }
+
+  if (!document.getElementById('routeProfile')) {
+    const label = document.createElement('label');
+    const span = document.createElement('span');
+    span.textContent = 'Route';
+    const select = document.createElement('select');
+    select.id = 'routeProfile';
+    ROUTE_OPTIONS.forEach((option) => {
+      const opt = document.createElement('option');
+      opt.value = option.value;
+      opt.textContent = option.label;
+      select.appendChild(opt);
+    });
+    label.appendChild(span);
+    label.appendChild(select);
+    const takerLabel = document.getElementById('takerFee')?.closest('label');
+    if (takerLabel?.parentElement) {
+      takerLabel.parentElement.insertBefore(label, takerLabel.nextSibling);
+    } else if (makerLabel?.parentElement) {
+      makerLabel.parentElement.insertBefore(label, makerLabel.nextSibling);
+    } else {
+      form.appendChild(label);
+    }
+  }
+};
+
+const ensureMetricsStructure = () => {
+  const metricsEl = document.getElementById('metrics');
+  if (!metricsEl) return;
+  metricsEl.innerHTML = `Net edge: <strong id="edgeValue">–</strong>% • `
+    + `Breakeven spread%: <strong id="breakevenValue">–</strong>% • `
+    + `Roundtrip fees: <strong id="roundTripValue">–</strong>% • `
+    + `P&L/cyclus: <strong id="pnlValue">–</strong>`;
+};
+
+ensureSettingsControls();
+ensureMetricsStructure();
+
 const els = {
   badge: document.getElementById('statusBadge'),
   buy: document.getElementById('buyValue'),
   sell: document.getElementById('sellValue'),
   edge: document.getElementById('edgeValue'),
   breakeven: document.getElementById('breakevenValue'),
+  roundTrip: document.getElementById('roundTripValue'),
   pnl: document.getElementById('pnlValue'),
   bid: document.getElementById('bidValue'),
   ask: document.getElementById('askValue'),
@@ -19,6 +89,8 @@ const els = {
   copyBuy: document.getElementById('copyBuy'),
   copySell: document.getElementById('copySell'),
   makerFee: document.getElementById('makerFee'),
+  takerFee: document.getElementById('takerFee'),
+  route: document.getElementById('routeProfile'),
   slippage: document.getElementById('slippage'),
   minEdge: document.getElementById('minEdge'),
   position: document.getElementById('position'),
@@ -27,6 +99,8 @@ const els = {
 
 const defaults = {
   makerFeePct: 0.15,
+  takerFeePct: 0.25,
+  routeProfile: 'maker-maker',
   slippagePct: 0.05,
   minEdgePct: 0.25,
   positionEur: 250,
@@ -82,6 +156,9 @@ const updateMetrics = () => {
   els.sell.textContent = formatPrice(result.sell);
   els.edge.textContent = formatPercent(result.edge);
   els.breakeven.textContent = formatPercent(result.breakeven);
+  if (els.roundTrip) {
+    els.roundTrip.textContent = formatPercent(result.roundTripFeePct);
+  }
   els.pnl.textContent = formatMoney(result.pnl);
   updateBadge(result.go);
 };
@@ -94,11 +171,18 @@ const loadSettings = () => {
     }
   } catch (_) {}
 
-  els.makerFee.value = params.makerFeePct;
-  els.slippage.value = params.slippagePct;
-  els.minEdge.value = params.minEdgePct;
-  els.position.value = params.positionEur;
-  els.tick.value = params.tick;
+  const routeValue = ROUTE_VALUES.has(params.routeProfile)
+    ? params.routeProfile
+    : defaults.routeProfile;
+  params.routeProfile = routeValue;
+
+  if (els.makerFee) els.makerFee.value = params.makerFeePct;
+  if (els.takerFee) els.takerFee.value = params.takerFeePct;
+  if (els.route) els.route.value = params.routeProfile;
+  if (els.slippage) els.slippage.value = params.slippagePct;
+  if (els.minEdge) els.minEdge.value = params.minEdgePct;
+  if (els.position) els.position.value = params.positionEur;
+  if (els.tick) els.tick.value = params.tick;
   updateMetrics();
 };
 
@@ -109,18 +193,41 @@ const persistSettings = () => {
 const readParam = (target, key) => {
   const value = parseFloat(target.value);
   if (isFinite(value)) {
-    params[key] = value;
+    params[key] = Math.max(0, value);
   }
   updateMetrics();
   persistSettings();
 };
 
+const readRoute = (target) => {
+  const value = target.value;
+  params.routeProfile = ROUTE_VALUES.has(value) ? value : defaults.routeProfile;
+  updateMetrics();
+  persistSettings();
+};
+
 const registerSettings = () => {
-  els.makerFee.addEventListener('change', (e) => readParam(e.target, 'makerFeePct'));
-  els.slippage.addEventListener('change', (e) => readParam(e.target, 'slippagePct'));
-  els.minEdge.addEventListener('change', (e) => readParam(e.target, 'minEdgePct'));
-  els.position.addEventListener('change', (e) => readParam(e.target, 'positionEur'));
-  els.tick.addEventListener('change', (e) => readParam(e.target, 'tick'));
+  if (els.makerFee) {
+    els.makerFee.addEventListener('change', (e) => readParam(e.target, 'makerFeePct'));
+  }
+  if (els.takerFee) {
+    els.takerFee.addEventListener('change', (e) => readParam(e.target, 'takerFeePct'));
+  }
+  if (els.route) {
+    els.route.addEventListener('change', (e) => readRoute(e.target));
+  }
+  if (els.slippage) {
+    els.slippage.addEventListener('change', (e) => readParam(e.target, 'slippagePct'));
+  }
+  if (els.minEdge) {
+    els.minEdge.addEventListener('change', (e) => readParam(e.target, 'minEdgePct'));
+  }
+  if (els.position) {
+    els.position.addEventListener('change', (e) => readParam(e.target, 'positionEur'));
+  }
+  if (els.tick) {
+    els.tick.addEventListener('change', (e) => readParam(e.target, 'tick'));
+  }
 };
 
 const formatTime = (timestamp) => {

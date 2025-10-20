@@ -32,19 +32,57 @@ export function roundTick(value, tick, mode = 'nearest') {
   return clampDecimals(rounded, decimals + 2);
 }
 
+const sanitizePct = (value) => (isFinite(value) ? Math.max(0, value) : 0);
+
+const resolveRoute = (routeProfile = '') => {
+  const normalized = routeProfile.toString().trim().toLowerCase();
+  const token = normalized.replace(/\s+/g, '').replace(/-/g, '/');
+  switch (token) {
+    case 'maker/taker':
+      return { buy: 'maker', sell: 'taker' };
+    case 'taker/maker':
+      return { buy: 'taker', sell: 'maker' };
+    case 'taker/taker':
+      return { buy: 'taker', sell: 'taker' };
+    default:
+      return { buy: 'maker', sell: 'maker' };
+  }
+};
+
 export function compute(bid, ask, params) {
-  const { makerFeePct, slippagePct, minEdgePct, positionEur, tick } = params;
+  const {
+    makerFeePct,
+    takerFeePct,
+    routeProfile,
+    slippagePct,
+    minEdgePct,
+    positionEur,
+    tick,
+  } = params;
+
   const decimals = countDecimals(tick || 0.01) + 2;
+  const makerFee = sanitizePct(makerFeePct);
+  const takerFee = sanitizePct(takerFeePct);
+  const slippage = sanitizePct(slippagePct);
+  const route = resolveRoute(routeProfile);
+  const buyFeePct = route.buy === 'taker' ? takerFee : makerFee;
+  const sellFeePct = route.sell === 'taker' ? takerFee : makerFee;
+  const feeBuy = buyFeePct / 100;
+  const feeSell = sellFeePct / 100;
+  const slip = slippage / 100;
+  const roundTripFeePct = buyFeePct + sellFeePct;
+  const breakevenSpreadPct = roundTripFeePct + 2 * slippage;
 
   if (!isFinite(bid) || !isFinite(ask) || bid <= 0 || ask <= 0) {
     return {
       buy: NaN,
       sell: NaN,
       edge: NaN,
-      breakeven: NaN,
+      breakeven: clampDecimals(breakevenSpreadPct, 2),
       pnl: NaN,
       go: false,
       minEdge: minEdgePct,
+      roundTripFeePct: clampDecimals(roundTripFeePct, 2),
     };
   }
 
@@ -54,15 +92,11 @@ export function compute(bid, ask, params) {
   const buy = roundTick(rawBuy, safeTick, 'down');
   const sell = roundTick(rawSell, safeTick, 'up');
 
-  const fee = (makerFeePct || 0) / 100;
-  const slip = (slippagePct || 0) / 100;
-
-  const effectiveBuy = buy * (1 + fee + slip);
-  const effectiveSell = sell * (1 - fee - slip);
+  const effectiveBuy = buy * (1 + feeBuy + slip);
+  const effectiveSell = sell * (1 - feeSell - slip);
 
   const diff = effectiveSell - effectiveBuy;
   const edge = effectiveBuy > 0 ? (diff / effectiveBuy) * 100 : NaN;
-  const breakeven = ((1 + fee + slip) / Math.max(1 - fee - slip, 1e-6) - 1) * 100;
   const pnl = effectiveBuy > 0 ? (positionEur || 0) * (diff / effectiveBuy) : 0;
   const go = isFinite(edge) && edge >= (minEdgePct || 0);
 
@@ -70,9 +104,10 @@ export function compute(bid, ask, params) {
     buy: clampDecimals(buy, decimals),
     sell: clampDecimals(sell, decimals),
     edge: clampDecimals(edge, 2),
-    breakeven: clampDecimals(breakeven, 2),
+    breakeven: clampDecimals(breakevenSpreadPct, 2),
     pnl: clampDecimals(pnl, 2),
     go,
     minEdge: minEdgePct,
+    roundTripFeePct: clampDecimals(roundTripFeePct, 2),
   };
 }
