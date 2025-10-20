@@ -5,6 +5,7 @@ import {
   fetchTicker24hStats,
   fetchTopSpreadMarkets,
   subscribeOrderBook,
+  normalizeMarketId,
 } from './data.js';
 
 const ROUTES = [
@@ -418,7 +419,7 @@ function readInt(input, fallback) {
 }
 
 function applyParamsFromInputs() {
-  state.market = (els.market?.value || defaultParams.market).toUpperCase();
+  state.market = normalizeMarketId(els.market?.value || defaultParams.market);
   state.depth = readInt(els.depth, defaultParams.depth);
   state.interval = Math.max(1, readInt(els.interval, defaultParams.interval));
   state.makerFeePct = Math.max(0, readFloat(els.makerFee, defaultParams.makerFeePct));

@@ -1,6 +1,19 @@
 const BITVAVO_BASE_URL = 'https://api.bitvavo.com/v2';
 export const DEFAULT_MARKET = 'ARK-EUR';
 
+const MARKET_ID_PATTERN = /^[A-Z0-9-]+$/;
+
+export const normalizeMarketId = (market = DEFAULT_MARKET) => {
+  if (market == null) return DEFAULT_MARKET;
+
+  const text = String(market).trim().toUpperCase();
+  if (!text) return DEFAULT_MARKET;
+  if (!text.includes('-')) return DEFAULT_MARKET;
+  if (!MARKET_ID_PATTERN.test(text)) return DEFAULT_MARKET;
+
+  return text;
+};
+
 const parseNumber = (value) => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : NaN;
@@ -47,7 +60,7 @@ const fetchJson = async (url) => {
 };
 
 export async function fetchOrderBook(market = DEFAULT_MARKET, depth = 25) {
-  const marketId = typeof market === 'string' ? market.toUpperCase() : DEFAULT_MARKET;
+  const marketId = normalizeMarketId(market);
   const safeDepth = sanitizeDepth(depth);
   const url = `${BITVAVO_BASE_URL}/${encodeURIComponent(marketId)}/book?depth=${safeDepth}`;
   const payload = await fetchJson(url);
@@ -105,7 +118,7 @@ const normalizeTickerPayload = (payload, marketId) => {
 };
 
 export async function fetchTicker24hStats(market = DEFAULT_MARKET) {
-  const marketId = typeof market === 'string' ? market.toUpperCase() : DEFAULT_MARKET;
+  const marketId = normalizeMarketId(market);
   const url = `${BITVAVO_BASE_URL}/ticker/24h?market=${encodeURIComponent(marketId)}`;
   try {
     const payload = await fetchJson(url);
@@ -169,7 +182,7 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
 }
 
 export async function fetchMarketSpecifications(market = DEFAULT_MARKET) {
-  const marketId = typeof market === 'string' ? market.toUpperCase() : DEFAULT_MARKET;
+  const marketId = normalizeMarketId(market);
   const url = `${BITVAVO_BASE_URL}/markets?market=${encodeURIComponent(marketId)}`;
   try {
     const payload = await fetchJson(url);
@@ -210,7 +223,7 @@ export function subscribeOrderBook({
   onData,
   onError,
 } = {}) {
-  const marketId = typeof market === 'string' ? market.toUpperCase() : DEFAULT_MARKET;
+  const marketId = normalizeMarketId(market);
   const safeDepth = sanitizeDepth(depth);
   const refresh = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 5000;
 
