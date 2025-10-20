@@ -16,20 +16,37 @@ const countDecimals = (tick) => {
   return (text.split('.')[1] || '').length;
 };
 
-export function roundTick(value, tick, mode = 'nearest') {
+export function roundToTick(value, tick, mode = 'nearest') {
   if (!isFinite(value)) return NaN;
   if (!isFinite(tick) || tick <= 0) return value;
   const decimals = countDecimals(tick);
   const ratio = value / tick;
-  let rounded;
+  const epsilon = Number.EPSILON * Math.max(1, Math.abs(ratio) * 10);
+  let steps;
+
   if (mode === 'down') {
-    rounded = Math.floor(ratio) * tick;
+    steps = Math.floor(ratio + epsilon);
   } else if (mode === 'up') {
-    rounded = Math.ceil(ratio) * tick;
+    steps = Math.ceil(ratio - epsilon);
   } else {
-    rounded = Math.round(ratio) * tick;
+    steps = Math.round(ratio);
   }
-  return clampDecimals(rounded, decimals + 2);
+
+  const rounded = steps * tick;
+  return clampDecimals(rounded, decimals);
+}
+
+export function roundTick(value, tick, mode = 'nearest') {
+  return roundToTick(value, tick, mode);
+}
+
+export function isOnTick(value, tick) {
+  if (!isFinite(value)) return false;
+  if (!isFinite(tick) || tick <= 0) return false;
+  const rounded = roundToTick(value, tick);
+  if (!isFinite(rounded)) return false;
+  const tolerance = Math.pow(10, -(countDecimals(tick) + 2));
+  return Math.abs(rounded - value) <= tolerance;
 }
 
 const sanitizePct = (value) => (isFinite(value) ? Math.max(0, value) : 0);
@@ -60,7 +77,8 @@ export function compute(bid, ask, params) {
     tick,
   } = params;
 
-  const decimals = countDecimals(tick || 0.01) + 2;
+  const safeTick = tick > 0 ? tick : 0.0001;
+  const decimals = countDecimals(safeTick);
   const makerFee = sanitizePct(makerFeePct);
   const takerFee = sanitizePct(takerFeePct);
   const slippage = sanitizePct(slippagePct);
@@ -86,11 +104,10 @@ export function compute(bid, ask, params) {
     };
   }
 
-  const safeTick = tick > 0 ? tick : 0.0001;
   const rawBuy = Math.max(bid - safeTick, 0);
   const rawSell = ask + safeTick;
-  const buy = roundTick(rawBuy, safeTick, 'down');
-  const sell = roundTick(rawSell, safeTick, 'up');
+  const buy = roundToTick(rawBuy, safeTick, 'down');
+  const sell = roundToTick(rawSell, safeTick, 'up');
 
   const effectiveBuy = buy * (1 + feeBuy + slip);
   const effectiveSell = sell * (1 - feeSell - slip);

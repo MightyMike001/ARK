@@ -1,9 +1,10 @@
 const BITVAVO_URL = 'wss://ws.bitvavo.com/v2/';
-const MARKET = 'ARK-EUR';
+export const MARKET = 'ARK-EUR';
 const BOOK_DEPTH = 25;
 const BITVAVO_BOOK_URL = `https://api.bitvavo.com/v2/${MARKET}/book?depth=${BOOK_DEPTH}`;
 const BINANCE_DEPTH_URL = `https://api.binance.com/api/v3/depth?symbol=ARKUSDT&limit=${BOOK_DEPTH}`;
 const BINANCE_TICKER_URL = 'https://api.binance.com/api/v3/ticker/bookTicker?symbol=EURUSDT';
+const BITVAVO_MARKETS_URL = 'https://api.bitvavo.com/v2/markets';
 
 const fetchJson = async (url) => {
   const res = await fetch(url, { cache: 'no-store' });
@@ -15,6 +16,41 @@ const parseNumber = (value) => {
   const num = parseFloat(value);
   return Number.isFinite(num) ? num : NaN;
 };
+
+export async function fetchMarketSpecifications(market = MARKET) {
+  const marketId = typeof market === 'string' ? market.toUpperCase() : MARKET;
+  try {
+    const url = `${BITVAVO_MARKETS_URL}?market=${encodeURIComponent(marketId)}`;
+    const payload = await fetchJson(url);
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.markets)
+        ? payload.markets
+        : [];
+
+    const spec = list.find((item) => (item?.market || '').toUpperCase() === marketId);
+    if (!spec) return null;
+
+    const tickSize = parseNumber(spec.tickSize ?? spec.priceTickSize ?? spec.stepSize);
+    const quoteDecimalsRaw = spec.amountQuoteDecimals
+      ?? spec.amountDecimalsQuote
+      ?? spec.quotePrecision;
+    const amountQuoteDecimals = Number.isFinite(quoteDecimalsRaw)
+      ? quoteDecimalsRaw
+      : parseInt(quoteDecimalsRaw, 10);
+
+    return {
+      market: spec.market || marketId,
+      tickSize: Number.isFinite(tickSize) && tickSize > 0 ? tickSize : NaN,
+      amountQuoteDecimals: Number.isFinite(amountQuoteDecimals) && amountQuoteDecimals >= 0
+        ? amountQuoteDecimals
+        : NaN,
+    };
+  } catch (err) {
+    console.warn('Kon marktspecificaties niet ophalen', err);
+    return null;
+  }
+}
 
 const convertUsdtToEur = (value, eurTicker) => {
   if (!eurTicker) return NaN;
