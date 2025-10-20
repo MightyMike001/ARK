@@ -138,11 +138,14 @@ const ctx = cvs.getContext('2d', { alpha: false });
 
 let timer = null;
 const MAX_TAGS = 16;
+const TOP_SPREAD_LIMIT = 10;
 const FALLBACK_MARKETS = [
   'ARK-EUR','BTC-EUR','ETH-EUR','XRP-EUR','ADA-EUR','SOL-EUR','DOT-EUR','DOGE-EUR',
   'MATIC-EUR','AVAX-EUR','ATOM-EUR','LINK-EUR','HBAR-EUR','EGLD-EUR','SAND-EUR','BCH-EUR'
 ];
 let markets = [...FALLBACK_MARKETS];
+let spreadByMarket = {};
+let hasSpreadMarkets = false;
 const tagsEl = $('#tags');
 
 function renderTags(){
@@ -150,11 +153,21 @@ function renderTags(){
   markets.forEach(m => {
     const b = document.createElement('button');
     b.className = 'tag mono';
-    b.textContent = m;
+    const spread = spreadByMarket[m];
+    b.textContent = spread ? `${m} • ${(spread*100).toFixed(2)}%` : m;
     b.title = 'Klik om deze market te laden';
     b.onclick = () => { $('#marketInput').value = m; fetchAndRender().catch(e => status('Fout: '+e.message)); };
     tagsEl.appendChild(b);
   });
+}
+
+function setMarkets(list, opts={}){
+  markets = list.slice(0, MAX_TAGS);
+  if(opts.resetSpread){
+    spreadByMarket = {};
+    hasSpreadMarkets = false;
+  }
+  renderTags();
 }
 
 async function loadMarketsFromApi(){
@@ -191,15 +204,47 @@ async function loadMarketsFromApi(){
     };
     FALLBACK_MARKETS.forEach(pushUnique);
     eurMarkets.forEach(m => { if(!preferred.has(m)) pushUnique(m); });
-    markets = deduped.slice(0, MAX_TAGS);
-    renderTags();
+    if(!hasSpreadMarkets){
+      setMarkets(deduped, { resetSpread: true });
+    }
   } catch(err) {
     console.warn('Kon markets niet laden', err);
   }
 }
 
+async function loadTopSpreadMarkets(){
+  try {
+    const res = await fetch('https://api.bitvavo.com/v2/ticker/book', { method: 'GET', mode: 'cors', cache: 'no-store' });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    const list = Array.isArray(payload)? payload : (Array.isArray(payload?.markets)? payload.markets : []);
+    if(!list.length) return;
+    const spreads = list
+      .map(item => {
+        const market = typeof item?.market === 'string' ? item.market.toUpperCase() : '';
+        if(!/-EUR$/i.test(market)) return null;
+        const bestBid = parseFloat(item?.bestBid ?? item?.bid ?? item?.bidPrice ?? item?.bestBidPrice);
+        const bestAsk = parseFloat(item?.bestAsk ?? item?.ask ?? item?.askPrice ?? item?.bestAskPrice);
+        if(!isFinite(bestBid) || !isFinite(bestAsk) || bestBid <= 0 || bestAsk <= 0 || bestAsk <= bestBid) return null;
+        const spreadAbs = bestAsk - bestBid;
+        const mid = (bestAsk + bestBid) / 2;
+        if(!isFinite(mid) || mid <= 0) return null;
+        return { market, spreadPct: spreadAbs / mid };
+      })
+      .filter(Boolean)
+      .sort((a,b) => b.spreadPct - a.spreadPct)
+      .slice(0, TOP_SPREAD_LIMIT);
+    if(!spreads.length) return;
+    spreadByMarket = spreads.reduce((acc, item) => { acc[item.market] = item.spreadPct; return acc; }, {});
+    hasSpreadMarkets = true;
+    setMarkets(spreads.map(item => item.market));
+  } catch(err) {
+    console.warn('Kon spreads niet laden', err);
+  }
+}
+
 renderTags();
-loadMarketsFromApi();
+loadTopSpreadMarkets().finally(() => { loadMarketsFromApi(); });
 
 $('#btnAdd').onclick = () => {
   const val = ($('#marketInput').value||'').trim().toUpperCase();
