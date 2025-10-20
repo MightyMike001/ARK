@@ -1,160 +1,309 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ARK limit-advies</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #080c12;
-      --card: #111824;
-      --border: rgba(255,255,255,0.08);
-      --text: #f5f7fb;
-      --muted: #8b94a7;
-      --go: #22c277;
-      --nogo: #ff5d5d;
-      --accent: #d7b46a;
-      --radius: 18px;
-      --space: 18px;
-      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.5;
-      min-height: 100vh;
-      padding: clamp(16px, 3vw, 32px);
-      display: flex;
-      justify-content: center;
-    }
-    main {
-      width: min(560px, 100%);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space);
-    }
-    section.card {
-      background: var(--card);
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      padding: var(--space);
-      display: flex;
-      flex-direction: column;
-      gap: var(--space);
-      box-shadow: 0 24px 40px rgba(0,0,0,0.25);
-    }
-    h1 { font-size: 1.35rem; }
-    p.sub { color: var(--muted); font-size: 0.95rem; }
-    .top { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
-    .badge {
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      font-size: 0.85rem;
-      padding: 6px 12px;
-      border-radius: 999px;
-      border: 1px solid transparent;
-      text-transform: uppercase;
-      align-self: flex-start;
-    }
-    .badge.go { background: rgba(34,194,119,0.16); border-color: rgba(34,194,119,0.45); color: var(--go); }
-    .badge.nogo { background: rgba(255,93,93,0.14); border-color: rgba(255,93,93,0.4); color: var(--nogo); }
-    .line { font-size: 1.05rem; display: flex; justify-content: space-between; gap: 8px; }
-    .line span { font-variant-numeric: tabular-nums; font-weight: 600; }
-    .meta { color: var(--muted); font-size: 0.95rem; display: flex; flex-wrap: wrap; gap: 6px 16px; }
-    .meta strong { color: var(--text); }
-    .book { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 0.92rem; }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
-    button {
-      flex: 1;
-      min-width: 140px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: rgba(255,255,255,0.05);
-      color: var(--text);
-      font-weight: 600;
-      padding: 12px 16px;
-      font-size: 1rem;
-      cursor: pointer;
-      transition: transform 0.15s ease, background 0.15s ease;
-    }
-    button:active { transform: scale(0.98); }
-    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-    label { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; color: var(--muted); }
-    label span { font-weight: 600; color: var(--text); font-size: 0.95rem; }
-    input[type="number"] {
-      background: rgba(0,0,0,0.2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 12px;
-      color: var(--text);
-      font-size: 1rem;
-      -moz-appearance: textfield;
-    }
-    input[type="number"]::-webkit-outer-spin-button,
-    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    small { color: var(--muted); font-size: 0.82rem; }
-    @media (max-width: 420px) {
-      body { padding: 12px; }
-      section.card { padding: 16px; }
-      h1 { font-size: 1.15rem; }
-      .line { font-size: 1rem; }
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Bitvavo Spread Monitor — v2</title>
+<style>
+  :root{
+    --bg:#0b0e13; --panel:#151a22; --ink:#e8edf3; --muted:#9aa3ad; --accent:#c8a76a; --grid:#212733; --bad:#c44; --good:#3ca66a;
+    --line:#1f2530;
+  }
+  html,body{height:100%}
+  body{margin:0;background:linear-gradient(180deg,#0b0e13 0%, #0f141d 100%);color:var(--ink);font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
+  .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
+  h1{font-size:20px;margin:0 0 12px}
+  .pill{display:inline-block;padding:2px 8px;border:1px solid #2b3648;border-radius:999px;margin-left:8px;color:var(--muted);font-size:12px}
+  .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 0 0 1px rgba(255,255,255,.02) inset}
+  .panel h2{margin:0;padding:10px 12px;border-bottom:1px solid var(--line);font-size:14px;color:var(--muted)}
+  .panel .body{padding:12px}
+  label{display:block;margin-bottom:8px}
+  select,input{background:#0f141d;color:var(--ink);border:1px solid #263042;border-radius:10px;padding:8px 10px;width:100%}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+  .stat{background:#0f141d;border:1px solid #202734;border-radius:10px;padding:8px}
+  .k{color:var(--muted);font-size:12px}
+  .v{font-weight:600;font-size:16px}
+  .ok{color:var(--good)} .warn{color:var(--bad)}
+  canvas{display:block;width:100%;height:420px;background:#0d121a;border-bottom:1px solid var(--line);border-radius:12px 12px 0 0}
+  .footer{padding:10px 12px;color:var(--muted);font-size:12px;border-top:1px solid var(--line)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  button{cursor:pointer;background:#1a2230;color:var(--ink);border:1px solid #2a3649;border-radius:10px;padding:10px 12px}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px}
+  .flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+  .tag{border:1px solid #2a3446;border-radius:999px;padding:4px 8px;background:#111725;cursor:pointer}
+  .tag:hover{border-color:#3d4c69}
+  .divider{height:1px;background:var(--line);margin:10px 0}
+  .rightline{border-left:1px solid var(--line)}
+  .link{color:var(--accent);text-decoration:none}
+  .link:hover{text-decoration:underline}
+  @media (max-width: 980px){ .grid{grid-template-columns:1fr;}}
+</style>
 </head>
 <body>
-  <main>
-    <section class="card" id="adviceCard">
-      <div class="top">
-        <div>
-          <h1>ARK limit-advies</h1>
-          <p class="sub">Live bid/ask, automatische limieten en net edge in één scherm.</p>
+<div class="wrap">
+  <h1>Bitvavo Spread Monitor <span class="pill mono">GET /v2/{market}/book</span></h1>
+  <div class="grid">
+    <div class="panel">
+      <h2>Orderboekvisualisatie (bids/asks) & spread</h2>
+      <canvas id="bookCanvas" width="1280" height="460"></canvas>
+      <div class="footer mono" id="status">Status: klaar…</div>
+    </div>
+
+    <div class="panel rightline">
+      <h2>Instellingen & cijfers</h2>
+      <div class="body">
+        <div class="row">
+          <label>Market (bijv. <span class="mono">ARK-EUR</span>)
+            <div class="flex">
+              <input id="marketInput" placeholder="ARK-EUR" value="ARK-EUR"/>
+              <button id="btnAdd">+ Voeg toe</button>
+            </div>
+          </label>
+          <label>Diepte (levels)
+            <select id="depth">
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+            </select>
+          </label>
         </div>
-        <span id="statusBadge" class="badge nogo">NO-GO</span>
+
+        <div>
+          <div class="k">Snelle selectie</div>
+          <div class="tags" id="tags"></div>
+          <div class="divider"></div>
+        </div>
+
+        <div class="row">
+          <label>Ververs elke (s)
+            <input id="refresh" type="number" min="2" step="1" value="5">
+          </label>
+          <label>Ordergrootte voor impact (€)
+            <input id="impactSize" type="number" min="50" step="50" value="1000">
+          </label>
+        </div>
+
+        <div class="flex" style="margin:10px 0 12px">
+          <button id="btnStart">Start</button>
+          <button id="btnStop">Stop</button>
+          <button id="btnOnce">Eenmalig ophalen</button>
+          <button id="btnExport">Export CSV</button>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <div class="k">Best Bid</div>
+            <div class="v mono" id="bestBid">–</div>
+          </div>
+          <div class="stat">
+            <div class="k">Best Ask</div>
+            <div class="v mono" id="bestAsk">–</div>
+          </div>
+          <div class="stat">
+            <div class="k">Spread (abs)</div>
+            <div class="v mono" id="spreadAbs">–</div>
+          </div>
+          <div class="stat">
+            <div class="k">Spread (%)</div>
+            <div class="v mono" id="spreadPct">–</div>
+          </div>
+          <div class="stat">
+            <div class="k">Geschatte buy-impact</div>
+            <div class="v mono" id="impactBuy">–</div>
+          </div>
+          <div class="stat">
+            <div class="k">Geschatte sell-impact</div>
+            <div class="v mono" id="impactSell">–</div>
+          </div>
+        </div>
+
+        <div class="hint">
+          ✦ De impact-schatting simuleert een marktorder van het opgegeven bedrag tegen asks (buy) of bids (sell).<br>
+          ✦ Endpoint: <a class="link" href="https://docs.bitvavo.com/docs/rest-api/get-order-book" target="_blank" rel="noopener">Bitvavo REST — Order book</a> (publiek, geen API-key nodig).
+        </div>
       </div>
-      <div class="line">BUY-limit: <span id="buyValue">–</span></div>
-      <div class="line">SELL-limit: <span id="sellValue">–</span></div>
-      <div class="meta" id="metrics">Net edge: <strong id="edgeValue">–</strong>% • Breakeven: <strong id="breakevenValue">–</strong>% • P&amp;L/cyclus: <strong id="pnlValue">–</strong></div>
-      <div class="book">
-        <span>Bid: <strong id="bidValue">–</strong></span>
-        <span>Ask: <strong id="askValue">–</strong></span>
-        <span id="tickInfo">Laatste tick: –</span>
-        <span id="sourceInfo"></span>
-      </div>
-      <div class="actions">
-        <button id="copyBuy">Kopieer BUY</button>
-        <button id="copySell">Kopieer SELL</button>
-      </div>
-    </section>
-    <section class="card" id="settingsCard">
-      <h2>Instellingen</h2>
-      <form id="settingsForm">
-        <label>
-          <span>Maker fee (%)</span>
-          <input type="number" step="0.01" min="0" id="makerFee" />
-        </label>
-        <label>
-          <span>Slippage/leg (%)</span>
-          <input type="number" step="0.01" min="0" id="slippage" />
-        </label>
-        <label>
-          <span>Min edge (%)</span>
-          <input type="number" step="0.01" min="0" id="minEdge" />
-        </label>
-        <label>
-          <span>Positie (EUR)</span>
-          <input type="number" step="1" min="0" id="position" />
-        </label>
-        <label>
-          <span>Tick</span>
-          <input type="number" step="0.0001" min="0" id="tick" />
-        </label>
-      </form>
-      <small>Instellingen worden lokaal opgeslagen en direct toegepast.</small>
-    </section>
-  </main>
-  <script type="module" src="./ui.js"></script>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = sel => document.querySelector(sel);
+const statusEl = $('#status');
+const cvs = $('#bookCanvas');
+const ctx = cvs.getContext('2d', { alpha: false });
+
+let timer = null;
+let markets = ['ARK-EUR','ARDR-EUR','STRAX-EUR','XNO-EUR','COTI-EUR'];
+const tagsEl = $('#tags');
+
+function renderTags(){
+  tagsEl.innerHTML = '';
+  markets.forEach(m => {
+    const b = document.createElement('button');
+    b.className = 'tag mono';
+    b.textContent = m;
+    b.title = 'Klik om deze market te laden';
+    b.onclick = () => { $('#marketInput').value = m; fetchAndRender().catch(e => status('Fout: '+e.message)); };
+    tagsEl.appendChild(b);
+  });
+}
+renderTags();
+
+$('#btnAdd').onclick = () => {
+  const val = ($('#marketInput').value||'').trim().toUpperCase();
+  if (!val) return;
+  if (!markets.includes(val)) { markets.unshift(val); if (markets.length>16) markets.pop(); renderTags(); }
+};
+
+function fmt(n, dp=5) {
+  if (n === null || n === undefined || isNaN(n)) return '–';
+  const digits = (n>1? 4 : 8); // iets meer precisie bij kleine prijzen
+  return n.toLocaleString('nl-NL', { maximumFractionDigits: Math.max(dp,digits) });
+}
+function pct(x){ return (x*100).toLocaleString('nl-NL',{maximumFractionDigits:3}) + '%'; }
+
+async function fetchOrderBook(market, depth){
+  const url = `https://api.bitvavo.com/v2/${encodeURIComponent(market)}/book?depth=${encodeURIComponent(depth)}`;
+  const res = await fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const bids = (data.bids||[]).map(r => [parseFloat(r[0]), parseFloat(r[1])]).filter(x => x[0] && x[1]);
+  const asks = (data.asks||[]).map(r => [parseFloat(r[0]), parseFloat(r[1])]).filter(x => x[0] && x[1]);
+  if (!bids.length || !asks.length) throw new Error('Leeg orderboek');
+  return { market, bids, asks };
+}
+
+function simulateImpactEUR(euros, sideLevels){
+  if (!euros || !sideLevels?.length) return null;
+  let remaining = euros, notional = 0, qty = 0;
+  for (const [p, s] of sideLevels){
+    const lot = p*s;
+    if (lot >= remaining){
+      const take = remaining / p;
+      notional += take * p; qty += take; remaining = 0; break;
+    } else {
+      notional += lot; qty += s; remaining -= lot;
+    }
+  }
+  if (remaining>0 || qty===0) return null; // onvoldoende diepte
+  return { avgPrice: notional/qty, qty };
+}
+
+function draw(bids, asks, bestBid, bestAsk, spreadPct){
+  const w=cvs.width, h=cvs.height; ctx.clearRect(0,0,w,h);
+  // bg
+  ctx.fillStyle = '#0d121a'; ctx.fillRect(0,0,w,h);
+  // grid
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
+  ctx.lineWidth=1; ctx.globalAlpha=0.4;
+  for(let i=1;i<=6;i++){ const y=(h/7)*i; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+  ctx.globalAlpha=1;
+
+  // header text
+  ctx.fillStyle = '#9aa3ad'; ctx.font = '12px ui-monospace, Menlo, Consolas, monospace';
+  ctx.fillText(`Best Bid: ${bestBid.toFixed(8)}   Best Ask: ${bestAsk.toFixed(8)}   Spread: ${(bestAsk-bestBid).toFixed(8)}  (${(spreadPct*100).toFixed(3)}%)`, 12, 18);
+
+  // bars
+  const maxBidAmt = Math.max(...bids.map(b=>b[1]));
+  const maxAskAmt = Math.max(...asks.map(a=>a[1]));
+  const barH=10,gap=2, midY=Math.floor(h*0.55), left=12, right=w-12;
+  const maxBars = Math.min(40, Math.max(bids.length, asks.length));
+
+  // BIDS (groen, naar beneden)
+  let y=midY; ctx.textAlign='left';
+  bids.slice(0,maxBars).forEach(([p,s],i)=>{
+    y += barH+gap; const len = (s/maxBidAmt)*(w*0.44);
+    ctx.fillStyle='#1b2a22'; ctx.fillRect(left,y,len,barH);
+    ctx.fillStyle='#3ca66a'; ctx.fillRect(left,y,Math.max(1,len),barH);
+    if(i<12){ ctx.fillStyle='#9aa3ad'; ctx.fillText(p.toFixed(8), left+len+8, y+barH-2); }
+  });
+
+  // ASKS (rood, naar boven)
+  y=midY; ctx.textAlign='right';
+  asks.slice(0,maxBars).forEach(([p,s],i)=>{
+    y -= barH+gap; const len=(s/maxAskAmt)*(w*0.44);
+    ctx.fillStyle='#2a1d1d'; ctx.fillRect(right-len,y,len,barH);
+    ctx.fillStyle='#c44'; ctx.fillRect(right-len,y,Math.max(1,len),barH);
+    if(i<12){ ctx.fillStyle='#9aa3ad'; ctx.fillText(p.toFixed(8), right-len-8, y+barH-2); }
+  });
+
+  // Spread band
+  const mid=(bestAsk+bestBid)/2, pxPer=(w*0.35);
+  const spreadPx=Math.min(160, Math.max(6, (bestAsk-bestBid)/mid*pxPer));
+  const cx=w/2; ctx.globalAlpha=.16; ctx.fillStyle='#c44'; ctx.fillRect(cx, 36, spreadPx/2, 38);
+  ctx.fillStyle='#3ca66a'; ctx.fillRect(cx-spreadPx/2, 36, spreadPx/2, 38);
+  ctx.globalAlpha=1; ctx.strokeStyle='#2d3746'; ctx.strokeRect(cx-spreadPx/2, 36, spreadPx, 38);
+  ctx.fillStyle='#e8edf3'; ctx.textAlign='center'; ctx.font='13px ui-monospace, Menlo, Consolas, monospace';
+  ctx.fillText(`Spread ${((bestAsk-bestBid)/mid*100).toFixed(3)}%`, cx, 59);
+}
+
+function status(msg){ statusEl.textContent = msg; }
+
+async function fetchAndRender(){
+  const market = ($('#marketInput').value||'').trim().toUpperCase();
+  if(!/^[A-Z0-9]+-[A-Z]{3,5}$/.test(market)) throw new Error('Ongeldige market (bijv. ARK-EUR)');
+  const depth = parseInt($('#depth').value,10)||50;
+
+  const t0=performance.now(); status(`Ophalen orderboek: ${market} …`);
+  const { bids, asks } = await fetchOrderBook(market, depth);
+  const bestBid=bids[0][0], bestAsk=asks[0][0];
+  const spreadAbs=bestAsk-bestBid, mid=(bestAsk+bestBid)/2, spreadPct=spreadAbs/mid;
+
+  // impact
+  const euros=Math.max(0, parseFloat($('#impactSize').value)||0);
+  const buy = simulateImpactEUR(euros, asks);
+  const sell = simulateImpactEUR(euros, bids);
+
+  // cijfers
+  $('#bestBid').textContent = fmt(bestBid);
+  $('#bestAsk').textContent = fmt(bestAsk);
+  $('#spreadAbs').textContent = fmt(spreadAbs, 8);
+  const spEl=$('#spreadPct'); spEl.textContent=pct(spreadPct); spEl.className='v mono '+(spreadPct>=0.01? 'warn':'ok');
+  $('#impactBuy').textContent = buy? `${fmt(buy.avgPrice)}  (${pct((buy.avgPrice-bestAsk)/mid)})` : '–';
+  $('#impactSell').textContent = sell? `${fmt(sell.avgPrice)}  (${pct((bestBid-sell.avgPrice)/mid)})` : '–';
+
+  // canvas
+  draw(bids, asks, bestBid, bestAsk, spreadPct);
+  const t1=performance.now(); status(`Orderboek ${market} • depth ${depth} • ${bids.length} bids / ${asks.length} asks • ${Math.round(t1-t0)} ms`);
+}
+
+function start(){
+  stop();
+  fetchAndRender().catch(err => status('Fout: '+err.message));
+  const s=Math.max(2, parseInt($('#refresh').value||'5',10));
+  timer=setInterval(()=>{ fetchAndRender().catch(err => status('Fout: '+err.message)); }, s*1000);
+}
+function stop(){ if(timer){ clearInterval(timer); timer=null; status('Gestopt'); } }
+
+// CSV export van laatste snapshot van bids/asks (na een fetch)
+let lastSnapshot=null;
+const _origFetch = fetchOrderBook;
+fetchOrderBook = async function(market, depth){
+  const r = await _origFetch(market, depth); lastSnapshot=r; return r;
+}
+
+$('#btnExport').onclick = () => {
+  if(!lastSnapshot){ alert('Nog geen data. Klik eerst "Eenmalig ophalen".'); return; }
+  const { market, bids, asks } = lastSnapshot;
+  let csv = `market,side,price,amount\n`;
+  bids.forEach(([p,a])=>{ csv += `${market},bid,${p},${a}\n`; });
+  asks.forEach(([p,a])=>{ csv += `${market},ask,${p},${a}\n`; });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=`orderbook-${market}.csv`; a.click();
+  URL.revokeObjectURL(url);
+};
+
+$('#btnStart').addEventListener('click', start);
+$('#btnStop').addEventListener('click', stop);
+$('#btnOnce').addEventListener('click', ()=>{ stop(); fetchAndRender().catch(err => status('Fout: '+err.message)); });
+
+// Start met ARK-EUR eenmalig
+fetchAndRender().catch(err => status('Fout: '+err.message));
+</script>
 </body>
 </html>
