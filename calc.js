@@ -66,7 +66,49 @@ const resolveRoute = (routeProfile = '') => {
   }
 };
 
-export function compute(bid, ask, params) {
+const toTopLevels = (levels) => {
+  if (!Array.isArray(levels)) return [];
+  const next = [];
+  for (const row of levels.slice(0, 3)) {
+    if (!Array.isArray(row)) continue;
+    const price = parseFloat(row[0]);
+    const size = parseFloat(row[1]);
+    if (!isFinite(price) || price <= 0 || !isFinite(size) || size <= 0) continue;
+    next.push([price, size]);
+  }
+  return next;
+};
+
+const sumNotional = (levels) => levels.reduce((total, [price, size]) => total + price * size, 0);
+
+const depthWeightedPrice = (levels, targetNotional, fallbackPrice) => {
+  if (!isFinite(targetNotional) || targetNotional <= 0 || !levels.length) {
+    return fallbackPrice;
+  }
+
+  let remaining = targetNotional;
+  let notional = 0;
+  let quantity = 0;
+
+  for (const [price, size] of levels) {
+    const levelNotional = price * size;
+    if (levelNotional <= 0) continue;
+
+    const takeNotional = Math.min(remaining, levelNotional);
+    const takeQuantity = takeNotional / price;
+    notional += takeNotional;
+    quantity += takeQuantity;
+    remaining -= takeNotional;
+
+    if (remaining <= 1e-9) break;
+  }
+
+  if (!quantity) return fallbackPrice;
+  const average = notional / quantity;
+  return isFinite(average) ? average : fallbackPrice;
+};
+
+export function compute(bid, ask, params, book = {}) {
   const {
     makerFeePct,
     takerFeePct,
@@ -126,8 +168,21 @@ export function compute(bid, ask, params) {
   const buy = clampDecimals(rawBuy, decimals);
   const sell = clampDecimals(rawSell, decimals);
 
-  const effectiveBuy = buy * (1 + feeBuy + slip);
-  const effectiveSell = sell * (1 - feeSell - slip);
+  const orderValue = Math.max(0, Number(positionEur) || 0);
+  const askLevels = toTopLevels(book.asks);
+  const bidLevels = toTopLevels(book.bids);
+  const buyDepthNotional = sumNotional(askLevels);
+  const sellDepthNotional = sumNotional(bidLevels);
+
+  const depthWarning = orderValue > 0
+    && ((buyDepthNotional > 0 && orderValue > buyDepthNotional * 0.25)
+      || (sellDepthNotional > 0 && orderValue > sellDepthNotional * 0.25));
+
+  const depthAdjustedBuy = depthWeightedPrice(askLevels, orderValue, buy);
+  const depthAdjustedSell = depthWeightedPrice(bidLevels, orderValue, sell);
+
+  const effectiveBuy = depthAdjustedBuy * (1 + feeBuy + slip);
+  const effectiveSell = depthAdjustedSell * (1 - feeSell - slip);
 
   const diff = effectiveSell - effectiveBuy;
   const edge = effectiveBuy > 0 ? (diff / effectiveBuy) * 100 : NaN;
@@ -160,5 +215,6 @@ export function compute(bid, ask, params) {
     spreadThreshold: clampDecimals(spreadThreshold, 2),
     minEdge: minEdgePct,
     roundTripFeePct: clampDecimals(roundTripFeePct, 2),
+    sizeWarning: depthWarning ? 'Size te groot t.o.v. depth' : '',
   };
 }
