@@ -151,6 +151,7 @@ const defaults = {
 const storageKey = 'ark_advice_settings_v1';
 let lastTick;
 let latestBidAsk = { bid: NaN, ask: NaN };
+let latestLevels = { bids: [], asks: [] };
 let params = { ...defaults };
 let quoteDecimals = 4;
 let manualInvalidSides = new Set();
@@ -345,7 +346,7 @@ const applyEdgeState = (state, showAdvice) => {
 };
 
 const updateMetrics = () => {
-  const result = compute(latestBidAsk.bid, latestBidAsk.ask, params);
+  const result = compute(latestBidAsk.bid, latestBidAsk.ask, params, latestLevels);
   els.buy.textContent = formatPrice(result.buy);
   els.sell.textContent = formatPrice(result.sell);
   els.edge.textContent = formatPercent(result.showAdvice ? result.edge : NaN);
@@ -379,9 +380,17 @@ const updateMetrics = () => {
     ? manualPriceError
     : (hasSell && !sellOnTick ? tickMessage : '');
 
+  const warnings = [];
+  if (result.sizeWarning) warnings.push(result.sizeWarning);
+  if (buyMessage && !warnings.includes(buyMessage)) warnings.push(buyMessage);
+  if (sellMessage && !warnings.includes(sellMessage)) warnings.push(sellMessage);
+
   const generalAdviceMessage = result.showAdvice ? '' : 'Spread te smal voor advies.';
-  const warningMessage = buyMessage || sellMessage || generalAdviceMessage;
-  setPriceWarning(warningMessage);
+  if (!warnings.length && generalAdviceMessage) {
+    warnings.push(generalAdviceMessage);
+  }
+
+  setPriceWarning(warnings.join(' '));
 
   const buyEnabled = hasBuy && !buyMessage;
   const sellEnabled = hasSell && !sellMessage;
@@ -495,7 +504,7 @@ const registerSettings = () => {
   }
 };
 
-const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth }) => {
+const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth, bids, asks }) => {
   latestBidAsk = { bid, ask };
   lastTick = timestamp;
   els.bid.textContent = formatPrice(bid);
@@ -506,6 +515,13 @@ const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth }
   if (els.spreadPct) {
     els.spreadPct.textContent = formatSpreadPercent(spreadPct);
   }
+  if (Array.isArray(bids)) {
+    latestLevels.bids = bids.slice(0, 3);
+  }
+  if (Array.isArray(asks)) {
+    latestLevels.asks = asks.slice(0, 3);
+  }
+
   if (depth) {
     if (els.bidDepth) {
       els.bidDepth.textContent = formatDepth(depth.bidNotional, depth.bidVolume);
@@ -591,13 +607,13 @@ const loadMarketSpecifications = async () => {
 const registerActions = () => {
   if (els.copyBuy) {
     els.copyBuy.addEventListener('click', () => {
-      const result = compute(latestBidAsk.bid, latestBidAsk.ask, params);
+      const result = compute(latestBidAsk.bid, latestBidAsk.ask, params, latestLevels);
       copyToClipboard(result.buy);
     });
   }
   if (els.copySell) {
     els.copySell.addEventListener('click', () => {
-      const result = compute(latestBidAsk.bid, latestBidAsk.ask, params);
+      const result = compute(latestBidAsk.bid, latestBidAsk.ask, params, latestLevels);
       copyToClipboard(result.sell);
     });
   }
