@@ -99,15 +99,32 @@ export function compute(bid, ask, params) {
       breakeven: clampDecimals(breakevenSpreadPct, 2),
       pnl: NaN,
       go: false,
+      showAdvice: false,
+      edgeState: 'neutral',
+      spreadPct: NaN,
+      spreadThreshold: clampDecimals(breakevenSpreadPct + (minEdgePct || 0), 2),
       minEdge: minEdgePct,
       roundTripFeePct: clampDecimals(roundTripFeePct, 2),
     };
   }
 
-  const rawBuy = Math.max(bid - safeTick, 0);
-  const rawSell = ask + safeTick;
-  const buy = roundToTick(rawBuy, safeTick, 'down');
-  const sell = roundToTick(rawSell, safeTick, 'up');
+  const spreadAbs = ask - bid;
+  const mid = (bid + ask) / 2;
+  const spreadPct = mid > 0 ? (spreadAbs / mid) * 100 : NaN;
+
+  const spreadThreshold = breakevenSpreadPct + (minEdgePct || 0);
+
+  const candidateBuy = Math.min(bid + safeTick, ask - safeTick);
+  const candidateSell = Math.max(ask - safeTick, bid + safeTick);
+
+  const boundedBuy = Math.max(0, candidateBuy);
+  const boundedSell = Math.max(0, candidateSell);
+
+  const rawBuy = roundToTick(boundedBuy, safeTick, 'down');
+  const rawSell = roundToTick(boundedSell, safeTick, 'up');
+
+  const buy = clampDecimals(rawBuy, decimals);
+  const sell = clampDecimals(rawSell, decimals);
 
   const effectiveBuy = buy * (1 + feeBuy + slip);
   const effectiveSell = sell * (1 - feeSell - slip);
@@ -115,15 +132,32 @@ export function compute(bid, ask, params) {
   const diff = effectiveSell - effectiveBuy;
   const edge = effectiveBuy > 0 ? (diff / effectiveBuy) * 100 : NaN;
   const pnl = effectiveBuy > 0 ? (positionEur || 0) * (diff / effectiveBuy) : 0;
-  const go = isFinite(edge) && edge >= (minEdgePct || 0);
+  const showAdvice = isFinite(spreadPct) && spreadPct >= spreadThreshold;
+
+  let edgeState = 'neutral';
+  if (isFinite(edge)) {
+    if (edge < 0) {
+      edgeState = 'negative';
+    } else if (edge >= (minEdgePct || 0)) {
+      edgeState = 'positive';
+    } else {
+      edgeState = 'breakeven';
+    }
+  }
+
+  const go = showAdvice && edgeState === 'positive';
 
   return {
-    buy: clampDecimals(buy, decimals),
-    sell: clampDecimals(sell, decimals),
+    buy: showAdvice ? buy : NaN,
+    sell: showAdvice ? sell : NaN,
     edge: clampDecimals(edge, 2),
     breakeven: clampDecimals(breakevenSpreadPct, 2),
     pnl: clampDecimals(pnl, 2),
     go,
+    showAdvice,
+    edgeState,
+    spreadPct: clampDecimals(spreadPct, 3),
+    spreadThreshold: clampDecimals(spreadThreshold, 2),
     minEdge: minEdgePct,
     roundTripFeePct: clampDecimals(roundTripFeePct, 2),
   };
