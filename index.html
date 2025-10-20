@@ -178,6 +178,48 @@
       font-size: 14px;
       text-align: center;
     }
+
+    @media (max-aspect-ratio: 4 / 3) {
+      body {
+        padding: 24px 12px;
+        justify-content: flex-start;
+      }
+
+      main {
+        width: min(720px, 100%);
+        gap: 16px;
+      }
+
+      h1 {
+        font-size: clamp(24px, 6vw, 30px);
+      }
+
+      .card {
+        padding: 20px clamp(16px, 5vw, 24px);
+      }
+
+      table {
+        font-size: 13px;
+      }
+
+      thead th {
+        font-size: 11px;
+      }
+
+      .top-spread-panel {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+      }
+
+      .top-spread-chart {
+        min-height: 180px;
+        padding: 12px;
+      }
+
+      .top-spread-chart p {
+        font-size: 13px;
+      }
+    }
   </style>
 </head>
 <body>
