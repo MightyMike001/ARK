@@ -10,6 +10,10 @@ const els = {
   pnl: document.getElementById('pnlValue'),
   bid: document.getElementById('bidValue'),
   ask: document.getElementById('askValue'),
+  spreadAbs: document.getElementById('spreadAbsValue'),
+  spreadPct: document.getElementById('spreadPctValue'),
+  bidDepth: document.getElementById('bidDepthValue'),
+  askDepth: document.getElementById('askDepthValue'),
   tickInfo: document.getElementById('tickInfo'),
   sourceInfo: document.getElementById('sourceInfo'),
   copyBuy: document.getElementById('copyBuy'),
@@ -44,9 +48,26 @@ const formatPercent = (value) => {
   return value.toFixed(2);
 };
 
+const formatSpreadPercent = (value) => {
+  if (!isFinite(value)) return '–';
+  return `${(value * 100).toFixed(3)}%`;
+};
+
+const formatSpreadAbs = (value) => {
+  if (!isFinite(value)) return '–';
+  return `€${value.toFixed(5)}`;
+};
+
 const formatMoney = (value) => {
   if (!isFinite(value)) return '–';
   return `€${value.toFixed(2)}`;
+};
+
+const formatDepth = (notional, volume) => {
+  if (!isFinite(notional) || !isFinite(volume)) return '–';
+  const euroText = notional.toLocaleString('nl-NL', { maximumFractionDigits: 0 });
+  const volumeText = volume.toLocaleString('nl-NL', { maximumFractionDigits: 2 });
+  return `€${euroText} • ${volumeText} ARK`;
 };
 
 const updateBadge = (go) => {
@@ -108,11 +129,25 @@ const formatTime = (timestamp) => {
   return `Laatste tick: ${date.toLocaleTimeString('nl-NL', { hour12: false })}`;
 };
 
-const handleTick = ({ bid, ask, timestamp, source }) => {
+const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth }) => {
   latestBidAsk = { bid, ask };
   lastTick = timestamp;
   els.bid.textContent = formatPrice(bid);
   els.ask.textContent = formatPrice(ask);
+  if (els.spreadAbs) {
+    els.spreadAbs.textContent = formatSpreadAbs(spreadAbs);
+  }
+  if (els.spreadPct) {
+    els.spreadPct.textContent = formatSpreadPercent(spreadPct);
+  }
+  if (depth) {
+    if (els.bidDepth) {
+      els.bidDepth.textContent = formatDepth(depth.bidNotional, depth.bidVolume);
+    }
+    if (els.askDepth) {
+      els.askDepth.textContent = formatDepth(depth.askNotional, depth.askVolume);
+    }
+  }
   els.tickInfo.textContent = formatTime(lastTick);
   if (source) {
     els.sourceInfo.textContent = source === 'ws' ? 'Bron: Bitvavo WebSocket' : 'Bron: Binance (poll)';
