@@ -79,6 +79,18 @@ const ensureSettingsControls = () => {
       #priceWarning {
         color: #d9534f;
       }
+
+      .edge-negative {
+        color: #d9534f;
+      }
+
+      .edge-breakeven {
+        color: #f0ad4e;
+      }
+
+      .edge-positive {
+        color: #3ca66a;
+      }
     `;
     document.head?.appendChild(style);
   }
@@ -95,6 +107,8 @@ const ensureMetricsStructure = () => {
 
 ensureSettingsControls();
 ensureMetricsStructure();
+
+const EDGE_STATE_CLASSES = ['edge-negative', 'edge-breakeven', 'edge-positive'];
 
 const els = {
   badge: document.getElementById('statusBadge'),
@@ -317,16 +331,31 @@ const updateBadge = (go) => {
   els.badge.classList.toggle('nogo', !go);
 };
 
+const applyEdgeState = (state, showAdvice) => {
+  if (!els.edge) return;
+  els.edge.classList.remove(...EDGE_STATE_CLASSES);
+  if (!showAdvice) return;
+  if (state === 'negative') {
+    els.edge.classList.add('edge-negative');
+  } else if (state === 'breakeven') {
+    els.edge.classList.add('edge-breakeven');
+  } else if (state === 'positive') {
+    els.edge.classList.add('edge-positive');
+  }
+};
+
 const updateMetrics = () => {
   const result = compute(latestBidAsk.bid, latestBidAsk.ask, params);
   els.buy.textContent = formatPrice(result.buy);
   els.sell.textContent = formatPrice(result.sell);
-  els.edge.textContent = formatPercent(result.edge);
+  els.edge.textContent = formatPercent(result.showAdvice ? result.edge : NaN);
   els.breakeven.textContent = formatPercent(result.breakeven);
   if (els.roundTrip) {
     els.roundTrip.textContent = formatPercent(result.roundTripFeePct);
   }
-  els.pnl.textContent = formatMoney(result.pnl);
+  els.pnl.textContent = formatMoney(result.showAdvice ? result.pnl : NaN);
+
+  applyEdgeState(result.edgeState, result.showAdvice);
 
   const tickValue = params.tick;
   const hasBuy = isFinite(result.buy);
@@ -350,21 +379,24 @@ const updateMetrics = () => {
     ? manualPriceError
     : (hasSell && !sellOnTick ? tickMessage : '');
 
-  const warningMessage = buyMessage || sellMessage;
+  const generalAdviceMessage = result.showAdvice ? '' : 'Spread te smal voor advies.';
+  const warningMessage = buyMessage || sellMessage || generalAdviceMessage;
   setPriceWarning(warningMessage);
 
   const buyEnabled = hasBuy && !buyMessage;
   const sellEnabled = hasSell && !sellMessage;
 
+  const spreadLimitedMessage = generalAdviceMessage;
+
   applyActionState(
     els.copyBuy,
     buyEnabled,
-    buyMessage || (!hasBuy ? 'Nog geen koopadvies beschikbaar.' : '')
+    buyMessage || (!hasBuy ? spreadLimitedMessage || 'Nog geen koopadvies beschikbaar.' : '')
   );
   applyActionState(
     els.copySell,
     sellEnabled,
-    sellMessage || (!hasSell ? 'Nog geen verkoopadvies beschikbaar.' : '')
+    sellMessage || (!hasSell ? spreadLimitedMessage || 'Nog geen verkoopadvies beschikbaar.' : '')
   );
 
   updateBadge(result.go);
