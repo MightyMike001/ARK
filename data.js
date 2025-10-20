@@ -5,12 +5,72 @@ const BITVAVO_BOOK_URL = `https://api.bitvavo.com/v2/${MARKET}/book?depth=${BOOK
 const BINANCE_DEPTH_URL = `https://api.binance.com/api/v3/depth?symbol=ARKUSDT&limit=${BOOK_DEPTH}`;
 const BINANCE_TICKER_URL = 'https://api.binance.com/api/v3/ticker/bookTicker?symbol=EURUSDT';
 const BITVAVO_MARKETS_URL = 'https://api.bitvavo.com/v2/markets';
+const BITVAVO_TICKER_24H_URL = 'https://api.bitvavo.com/v2/ticker/24h';
 
 const fetchJson = async (url) => {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 };
+
+const normalizeTickerPayload = (payload, marketId) => {
+  if (!payload) return null;
+  const market = (payload.market || payload.Market || '').toUpperCase();
+  if (market && market !== marketId) return null;
+
+  const volumeBase = parseNumber(
+    payload.volume
+      ?? payload.amount
+      ?? payload.baseVolume
+      ?? payload.volumeBase
+  );
+  const volumeQuote = parseNumber(
+    payload.volumeQuote
+      ?? payload.quoteVolume
+      ?? payload.quote
+  );
+  const bestBid = parseNumber(payload.bid ?? payload.bestBid);
+  const bestAsk = parseNumber(payload.ask ?? payload.bestAsk);
+  const last = parseNumber(payload.last ?? payload.price ?? payload.lastPrice);
+  const high = parseNumber(payload.high);
+  const low = parseNumber(payload.low);
+  const timestamp = parseNumber(payload.timestamp ?? payload.time) || Date.now();
+
+  return {
+    market: marketId,
+    volumeBase: Number.isFinite(volumeBase) && volumeBase >= 0 ? volumeBase : NaN,
+    volumeQuote: Number.isFinite(volumeQuote) && volumeQuote >= 0 ? volumeQuote : NaN,
+    bid: Number.isFinite(bestBid) && bestBid > 0 ? bestBid : NaN,
+    ask: Number.isFinite(bestAsk) && bestAsk > 0 ? bestAsk : NaN,
+    last: Number.isFinite(last) && last > 0 ? last : NaN,
+    high: Number.isFinite(high) && high > 0 ? high : NaN,
+    low: Number.isFinite(low) && low > 0 ? low : NaN,
+    timestamp,
+  };
+};
+
+export async function fetchTicker24hStats(market = MARKET) {
+  const marketId = typeof market === 'string' ? market.toUpperCase() : MARKET;
+  try {
+    const url = `${BITVAVO_TICKER_24H_URL}?market=${encodeURIComponent(marketId)}`;
+    const payload = await fetchJson(url);
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.ticker24h)
+        ? payload.ticker24h
+        : payload
+          ? [payload]
+          : [];
+
+    const normalized = list
+      .map((item) => normalizeTickerPayload(item, marketId))
+      .find(Boolean);
+    return normalized || null;
+  } catch (err) {
+    console.warn('Kon ticker24h niet ophalen', err);
+    return null;
+  }
+}
 
 const parseNumber = (value) => {
   const num = parseFloat(value);
@@ -85,11 +145,12 @@ const toLevels = (map, side) => {
 const sumAmount = (levels) => levels.reduce((total, [, amount]) => total + amount, 0);
 const sumNotional = (levels) => levels.reduce((total, [price, amount]) => total + price * amount, 0);
 
-export function startDataFeed(onTick, onSourceChange) {
+export function startDataFeed(onTick, onSourceChange, onTicker) {
   let ws;
   let reconnectTimer;
   let pollTimer;
   let snapshotRetryTimer;
+  let tickerPollTimer;
   let currentSource = '';
   let fetchingSnapshot = false;
   let bookReady = false;
@@ -101,6 +162,11 @@ export function startDataFeed(onTick, onSourceChange) {
     asks: new Map(),
     bidLevels: [],
     askLevels: [],
+  };
+
+  const emitTicker = (payload, source = 'ws') => {
+    if (!payload || typeof onTicker !== 'function') return;
+    onTicker({ ...payload, source });
   };
 
   const setSource = (source) => {
@@ -234,6 +300,7 @@ export function startDataFeed(onTick, onSourceChange) {
       const snapshot = await fetchJson(BITVAVO_BOOK_URL);
       applySnapshot(snapshot);
       clearPoll();
+      stopTickerPolling();
       setSource('ws');
     } catch (err) {
       console.warn('Kon Bitvavo snapshot niet ophalen', err);
@@ -241,6 +308,27 @@ export function startDataFeed(onTick, onSourceChange) {
       snapshotRetryTimer = setTimeout(requestSnapshot, 5000);
     } finally {
       fetchingSnapshot = false;
+    }
+  };
+
+  const startTickerPolling = (intervalMs = 60000) => {
+    if (tickerPollTimer) return;
+    const pollTicker = async () => {
+      try {
+        const stats = await fetchTicker24hStats();
+        if (stats) emitTicker(stats, 'poll');
+      } catch (err) {
+        console.warn('Ticker24h poll error', err);
+      }
+    };
+    pollTicker();
+    tickerPollTimer = setInterval(pollTicker, intervalMs);
+  };
+
+  const stopTickerPolling = () => {
+    if (tickerPollTimer) {
+      clearInterval(tickerPollTimer);
+      tickerPollTimer = null;
     }
   };
 
@@ -304,6 +392,7 @@ export function startDataFeed(onTick, onSourceChange) {
         console.warn('Binance poll error', err);
       }
     }, 2000);
+    startTickerPolling();
   };
 
   const resync = () => {
@@ -347,16 +436,23 @@ export function startDataFeed(onTick, onSourceChange) {
       bookReady = false;
       lastNonce = 0;
       pendingUpdates = [];
+      stopTickerPolling();
       try {
         ws.send(
           JSON.stringify({
             action: 'subscribe',
             markets: [MARKET],
-            channels: ['book'],
+            channels: ['book', 'ticker24h'],
           })
         );
       } catch (err) {
         console.warn('Kon Bitvavo subscription niet versturen', err);
+      }
+
+      if (typeof onTicker === 'function') {
+        fetchTicker24hStats().then((stats) => {
+          if (stats) emitTicker(stats, 'rest');
+        }).catch((err) => console.warn('Kon initiële ticker24h niet laden', err));
       }
     };
 
@@ -374,6 +470,9 @@ export function startDataFeed(onTick, onSourceChange) {
 
         if (data.event === 'book') {
           processUpdate(data);
+        } else if (data.event === 'ticker24h') {
+          const stats = normalizeTickerPayload(data, MARKET);
+          if (stats) emitTicker(stats, 'ws');
         } else if (data.event === 'error') {
           console.warn('Bitvavo error event', data);
           handleFailover();
@@ -393,6 +492,7 @@ export function startDataFeed(onTick, onSourceChange) {
     clearTimeout(reconnectTimer);
     clearTimeout(snapshotRetryTimer);
     clearPoll();
+    stopTickerPolling();
     stopWebsocket();
   };
 }

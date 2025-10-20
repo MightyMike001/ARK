@@ -99,10 +99,14 @@ const ensureSettingsControls = () => {
 const ensureMetricsStructure = () => {
   const metricsEl = document.getElementById('metrics');
   if (!metricsEl) return;
-  metricsEl.innerHTML = `Netto edge%: <strong id="edgeValue">–</strong>% • `
-    + `Breakeven spread%: <strong id="breakevenValue">–</strong>% • `
-    + `Roundtrip fees: <strong id="roundTripValue">–</strong>% • `
-    + `P&L/cyclus: <strong id="pnlValue">–</strong>`;
+  metricsEl.innerHTML = [
+    'Netto edge%: <strong id="edgeValue">–</strong>%',
+    'Breakeven spread%: <strong id="breakevenValue">–</strong>%',
+    'Roundtrip fees: <strong id="roundTripValue">–</strong>%',
+    'P&L/cyclus: <strong id="pnlValue">–</strong>',
+    '24h volume: <strong id="volume24hValue">–</strong>',
+    'Liquiditeitsscore: <strong id="liquidityScoreValue">–</strong>',
+  ].join(' • ');
 };
 
 ensureSettingsControls();
@@ -110,6 +114,12 @@ ensureMetricsStructure();
 ensureSpreadHistoryStructure();
 
 const SPREAD_WINDOW_MS = 15 * 60 * 1000;
+const LIQUIDITY_SPREAD_WINDOW_MS = 10 * 60 * 1000;
+const MIN_LIQUIDITY_SCORE = 4;
+const LIQUIDITY_VOLUME_MIN_EUR = 50000;
+const LIQUIDITY_VOLUME_MAX_EUR = 5000000;
+const LIQUIDITY_SPREAD_GOOD = 0.002;
+const LIQUIDITY_SPREAD_BAD = 0.015;
 const spreadHistory = [];
 let spreadChartCanvas;
 let spreadChartCtx;
@@ -493,6 +503,8 @@ const els = {
   spreadPct: document.getElementById('spreadPctValue'),
   bidDepth: document.getElementById('bidDepthValue'),
   askDepth: document.getElementById('askDepthValue'),
+  volume24h: document.getElementById('volume24hValue'),
+  liquidityScore: document.getElementById('liquidityScoreValue'),
   tickInfo: document.getElementById('tickInfo'),
   sourceInfo: document.getElementById('sourceInfo'),
   copyBuy: document.getElementById('copyBuy'),
@@ -525,6 +537,8 @@ let params = { ...defaults };
 let quoteDecimals = 4;
 let manualInvalidSides = new Set();
 let manualPriceError = '';
+let tickerStats = { volumeBase: NaN, volumeQuote: NaN, bid: NaN, ask: NaN, last: NaN, timestamp: 0 };
+let liquidityState = { score: NaN, averageSpread: NaN, volumeQuote: NaN, volumeBase: NaN };
 
 const decimalsFromTick = (tickValue = params.tick) => {
   const tick = typeof tickValue === 'string' ? parseFloat(tickValue) : tickValue;
@@ -579,6 +593,24 @@ const formatSpreadAbs = (value) => {
 const formatMoney = (value) => {
   if (!isFinite(value)) return '–';
   return `€${value.toFixed(2)}`;
+};
+
+const formatVolume24h = (volumeQuote, volumeBase) => {
+  const parts = [];
+  if (Number.isFinite(volumeQuote) && volumeQuote > 0) {
+    const euroText = volumeQuote.toLocaleString('nl-NL', { maximumFractionDigits: 0 });
+    parts.push(`€${euroText}`);
+  }
+  if (Number.isFinite(volumeBase) && volumeBase > 0) {
+    const baseText = volumeBase.toLocaleString('nl-NL', { maximumFractionDigits: 0 });
+    parts.push(`${baseText} ARK`);
+  }
+  return parts.length ? parts.join(' • ') : '–';
+};
+
+const formatLiquidityScore = (score) => {
+  if (!Number.isFinite(score)) return '–';
+  return score.toFixed(1);
 };
 
 const formatDepth = (notional, volume) => {
@@ -680,6 +712,117 @@ const formatTime = (timestamp) => {
   return `Laatste tick: ${date.toLocaleTimeString('nl-NL', { hour12: false })}`;
 };
 
+const getMidPrice = () => {
+  if (Number.isFinite(latestBidAsk.bid) && Number.isFinite(latestBidAsk.ask)) {
+    const mid = (latestBidAsk.bid + latestBidAsk.ask) / 2;
+    if (Number.isFinite(mid) && mid > 0) return mid;
+  }
+  if (Number.isFinite(tickerStats.bid) && Number.isFinite(tickerStats.ask)) {
+    const mid = (tickerStats.bid + tickerStats.ask) / 2;
+    if (Number.isFinite(mid) && mid > 0) return mid;
+  }
+  if (Number.isFinite(tickerStats.last) && tickerStats.last > 0) {
+    return tickerStats.last;
+  }
+  return NaN;
+};
+
+const computeAverageSpread = (sample, windowMs = LIQUIDITY_SPREAD_WINDOW_MS) => {
+  const referenceTime = Number(sample?.timestamp) || Date.now();
+  const cutoff = referenceTime - windowMs;
+  let sum = 0;
+  let count = 0;
+
+  for (const entry of spreadHistory) {
+    if (!Number.isFinite(entry?.spreadPct)) continue;
+    if (entry.timestamp < cutoff) continue;
+    sum += entry.spreadPct;
+    count += 1;
+  }
+
+  if (sample && Number.isFinite(sample.spreadPct) && sample.timestamp >= cutoff) {
+    sum += sample.spreadPct;
+    count += 1;
+  }
+
+  return count > 0 ? sum / count : NaN;
+};
+
+const computeLiquidityScore = (volumeEur, averageSpread) => {
+  if (!Number.isFinite(volumeEur) || volumeEur <= 0) return NaN;
+
+  const minVolume = Math.max(1, LIQUIDITY_VOLUME_MIN_EUR);
+  const maxVolume = Math.max(minVolume + 1, LIQUIDITY_VOLUME_MAX_EUR);
+  const logMin = Math.log10(minVolume);
+  const logMax = Math.log10(maxVolume);
+  const volumeValue = Math.max(volumeEur, minVolume / 10);
+  const volumeRatio = Math.min(
+    1,
+    Math.max(0, (Math.log10(volumeValue) - logMin) / (logMax - logMin))
+  );
+
+  let spreadRatio = 0;
+  if (Number.isFinite(averageSpread) && averageSpread > 0) {
+    const clamped = Math.min(
+      LIQUIDITY_SPREAD_BAD,
+      Math.max(averageSpread, LIQUIDITY_SPREAD_GOOD)
+    );
+    const denom = LIQUIDITY_SPREAD_BAD - LIQUIDITY_SPREAD_GOOD;
+    spreadRatio = denom > 0 ? (LIQUIDITY_SPREAD_BAD - clamped) / denom : 0;
+  }
+
+  const combined = (volumeRatio * 0.65) + (spreadRatio * 0.35);
+  const rawScore = 1 + combined * 9;
+  const clampedScore = Math.min(10, Math.max(1, rawScore));
+  return Math.round(clampedScore * 10) / 10;
+};
+
+const renderLiquidity = () => {
+  if (els.volume24h) {
+    els.volume24h.textContent = formatVolume24h(liquidityState.volumeQuote, liquidityState.volumeBase);
+  }
+
+  if (els.liquidityScore) {
+    const scoreText = formatLiquidityScore(liquidityState.score);
+    els.liquidityScore.textContent = scoreText;
+    if (Number.isFinite(liquidityState.score)) {
+      els.liquidityScore.title = Number.isFinite(liquidityState.averageSpread)
+        ? `Gemiddelde spread: ${(liquidityState.averageSpread * 100).toFixed(2)}% (rolling ${Math.round(LIQUIDITY_SPREAD_WINDOW_MS / 60000)} min)`
+        : '';
+    } else {
+      els.liquidityScore.removeAttribute('title');
+    }
+  }
+};
+
+const recalculateLiquidity = (spreadSample) => {
+  const averageSpread = computeAverageSpread(spreadSample, LIQUIDITY_SPREAD_WINDOW_MS);
+
+  let volumeQuote = Number.isFinite(tickerStats.volumeQuote) && tickerStats.volumeQuote >= 0
+    ? tickerStats.volumeQuote
+    : NaN;
+  const volumeBase = Number.isFinite(tickerStats.volumeBase) && tickerStats.volumeBase >= 0
+    ? tickerStats.volumeBase
+    : NaN;
+
+  if (!Number.isFinite(volumeQuote) && Number.isFinite(volumeBase) && volumeBase > 0) {
+    const mid = getMidPrice();
+    if (Number.isFinite(mid) && mid > 0) {
+      volumeQuote = volumeBase * mid;
+    }
+  }
+
+  const score = computeLiquidityScore(volumeQuote, averageSpread);
+  liquidityState = {
+    score: Number.isFinite(score) ? score : NaN,
+    averageSpread,
+    volumeQuote: Number.isFinite(volumeQuote) ? volumeQuote : NaN,
+    volumeBase,
+  };
+  renderLiquidity();
+  return liquidityState;
+};
+
 const updateTickInfo = () => {
   if (!els.tickInfo) return;
   const tickText = formatTickSize(params.tick);
@@ -724,6 +867,7 @@ const applyEdgeState = (state, showAdvice) => {
 
 const updateMetrics = () => {
   const result = compute(latestBidAsk.bid, latestBidAsk.ask, params, latestLevels);
+  const baseGo = result.go;
   els.buy.textContent = formatPrice(result.buy);
   els.sell.textContent = formatPrice(result.sell);
   els.edge.textContent = formatPercent(result.showAdvice ? result.edge : NaN);
@@ -762,11 +906,23 @@ const updateMetrics = () => {
   if (buyMessage && !warnings.includes(buyMessage)) warnings.push(buyMessage);
   if (sellMessage && !warnings.includes(sellMessage)) warnings.push(sellMessage);
 
+  const liquidityScore = Number.isFinite(liquidityState.score) ? liquidityState.score : NaN;
+  const meetsLiquidity = Number.isFinite(liquidityScore) ? liquidityScore >= MIN_LIQUIDITY_SCORE : true;
+  const liquidityMessage = `Liquiditeitsscore te laag (${formatLiquidityScore(liquidityScore)} < ${MIN_LIQUIDITY_SCORE}).`;
+  if (!meetsLiquidity && !warnings.includes(liquidityMessage)) {
+    warnings.push(liquidityMessage);
+  }
+
   let generalAdviceMessage = '';
   if (!result.showAdvice) {
     generalAdviceMessage = 'Spread te smal voor advies.';
-  } else if (!result.go) {
-    generalAdviceMessage = 'Netto edge onder minimumdrempel.';
+  } else {
+    if (!baseGo) {
+      generalAdviceMessage = 'Netto edge onder minimumdrempel.';
+    }
+    if (!meetsLiquidity && !generalAdviceMessage) {
+      generalAdviceMessage = liquidityMessage;
+    }
   }
   if (!warnings.length && generalAdviceMessage) {
     warnings.push(generalAdviceMessage);
@@ -790,7 +946,11 @@ const updateMetrics = () => {
     sellMessage || (!hasSell ? spreadLimitedMessage || 'Nog geen verkoopadvies beschikbaar.' : '')
   );
 
-  updateBadge(result.go, result.showAdvice);
+  const finalGo = result.showAdvice && baseGo && meetsLiquidity;
+  updateBadge(finalGo, result.showAdvice);
+  result.go = finalGo;
+  result.liquidityScore = liquidityScore;
+  result.meetsLiquidity = meetsLiquidity;
   return result;
 };
 
@@ -923,6 +1083,7 @@ const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth, 
   if (source) {
     els.sourceInfo.textContent = source === 'ws' ? 'Bron: Bitvavo WebSocket' : 'Bron: Binance (poll)';
   }
+  recalculateLiquidity({ timestamp, spreadPct });
   const result = updateMetrics();
   recordSpreadPoint({
     timestamp,
@@ -933,6 +1094,28 @@ const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth, 
     netEdgePct: result?.netEdgePct,
     showAdvice: Boolean(result?.showAdvice),
   });
+};
+
+const handleTicker = (ticker) => {
+  if (!ticker || typeof ticker !== 'object') return;
+  const volumeBase = Number(ticker.volumeBase);
+  const volumeQuote = Number(ticker.volumeQuote);
+  const bid = Number(ticker.bid);
+  const ask = Number(ticker.ask);
+  const last = Number(ticker.last);
+  const timestamp = Number(ticker.timestamp) || Date.now();
+
+  tickerStats = {
+    volumeBase: Number.isFinite(volumeBase) && volumeBase >= 0 ? volumeBase : NaN,
+    volumeQuote: Number.isFinite(volumeQuote) && volumeQuote >= 0 ? volumeQuote : NaN,
+    bid: Number.isFinite(bid) && bid > 0 ? bid : tickerStats.bid,
+    ask: Number.isFinite(ask) && ask > 0 ? ask : tickerStats.ask,
+    last: Number.isFinite(last) && last > 0 ? last : tickerStats.last,
+    timestamp,
+  };
+
+  recalculateLiquidity();
+  refreshMetrics();
 };
 
 const handleSourceChange = (source) => {
@@ -1023,7 +1206,8 @@ const start = () => {
   registerSettings();
   registerManualValidation();
   registerActions();
-  startDataFeed(handleTick, handleSourceChange);
+  renderLiquidity();
+  startDataFeed(handleTick, handleSourceChange, handleTicker);
   loadMarketSpecifications();
 };
 
