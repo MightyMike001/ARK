@@ -137,7 +137,12 @@ const cvs = $('#bookCanvas');
 const ctx = cvs.getContext('2d', { alpha: false });
 
 let timer = null;
-let markets = ['ARK-EUR','ARDR-EUR','STRAX-EUR','XNO-EUR','COTI-EUR'];
+const MAX_TAGS = 16;
+const FALLBACK_MARKETS = [
+  'ARK-EUR','BTC-EUR','ETH-EUR','XRP-EUR','ADA-EUR','SOL-EUR','DOT-EUR','DOGE-EUR',
+  'MATIC-EUR','AVAX-EUR','ATOM-EUR','LINK-EUR','HBAR-EUR','EGLD-EUR','SAND-EUR','BCH-EUR'
+];
+let markets = [...FALLBACK_MARKETS];
 const tagsEl = $('#tags');
 
 function renderTags(){
@@ -151,12 +156,55 @@ function renderTags(){
     tagsEl.appendChild(b);
   });
 }
+
+async function loadMarketsFromApi(){
+  try {
+    const res = await fetch('https://api.bitvavo.com/v2/markets', { method: 'GET', mode: 'cors', cache: 'no-store' });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    const list = Array.isArray(payload)? payload : (Array.isArray(payload?.markets)? payload.markets : []);
+    if(!list.length) return;
+    const eurMarkets = list
+      .map(item => ({
+        market: item?.market,
+        quote: item?.quote,
+        status: typeof (item?.status ?? item?.marketStatus) === 'string'
+          ? (item.status ?? item.marketStatus).toLowerCase()
+          : ''
+      }))
+      .filter(item => {
+        if(!item.market || typeof item.market !== 'string') return false;
+        if(item.quote && item.quote !== 'EUR') return false;
+        if(!/-EUR$/i.test(item.market)) return false;
+        if(item.status && item.status !== 'trading' && item.status !== 'auction') return false;
+        return true;
+      })
+      .map(item => item.market.toUpperCase())
+      .sort();
+    if(!eurMarkets.length) return;
+    const preferred = new Set(FALLBACK_MARKETS);
+    const deduped = [];
+    const pushUnique = (value) => {
+      if(!value) return;
+      if(deduped.includes(value)) return;
+      deduped.push(value);
+    };
+    FALLBACK_MARKETS.forEach(pushUnique);
+    eurMarkets.forEach(m => { if(!preferred.has(m)) pushUnique(m); });
+    markets = deduped.slice(0, MAX_TAGS);
+    renderTags();
+  } catch(err) {
+    console.warn('Kon markets niet laden', err);
+  }
+}
+
 renderTags();
+loadMarketsFromApi();
 
 $('#btnAdd').onclick = () => {
   const val = ($('#marketInput').value||'').trim().toUpperCase();
   if (!val) return;
-  if (!markets.includes(val)) { markets.unshift(val); if (markets.length>16) markets.pop(); renderTags(); }
+  if (!markets.includes(val)) { markets.unshift(val); if (markets.length>MAX_TAGS) markets.pop(); renderTags(); }
 };
 
 function fmt(n, dp=5) {
