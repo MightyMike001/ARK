@@ -124,6 +124,8 @@ export function compute(bid, ask, params, book = {}) {
       spreadThreshold: clampDecimals(breakevenSpreadPct + minEdgePctValue, 2),
       minEdge: minEdgePctValue,
       roundTripFeePct: clampDecimals(roundTripFeePct, 2),
+      netEdgeRatio: NaN,
+      netEdgePct: NaN,
     };
   }
 
@@ -193,5 +195,7 @@ export function compute(bid, ask, params, book = {}) {
     minEdge: minEdgePctValue,
     roundTripFeePct: clampDecimals(roundTripFeePct, 2),
     sizeWarning: depthWarning ? 'Size te groot t.o.v. depth' : '',
+    netEdgeRatio,
+    netEdgePct: isFinite(edge) ? edge : NaN,
   };
 }

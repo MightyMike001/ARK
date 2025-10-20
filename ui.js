@@ -107,6 +107,375 @@ const ensureMetricsStructure = () => {
 
 ensureSettingsControls();
 ensureMetricsStructure();
+ensureSpreadHistoryStructure();
+
+const SPREAD_WINDOW_MS = 15 * 60 * 1000;
+const spreadHistory = [];
+let spreadChartCanvas;
+let spreadChartCtx;
+let spreadChartPixelRatio = window.devicePixelRatio || 1;
+let spreadChartHasResizeListener = false;
+let spreadHistoryLatestLabel = null;
+
+function ensureSpreadHistoryStyles() {
+  if (document.getElementById('spreadHistoryStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'spreadHistoryStyles';
+  style.textContent = `
+    #spreadHistoryCard {
+      margin-top: 16px;
+      padding: 12px 14px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      background: rgba(15, 20, 29, 0.78);
+    }
+
+    #spreadHistoryCard .spread-history-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #9aa3ad;
+      margin-bottom: 6px;
+    }
+
+    #spreadHistoryCard .spread-history-latest {
+      color: #e8edf3;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    #spreadHistoryCard .spread-history-legend {
+      font-size: 11px;
+      color: #3ca66a;
+      margin-bottom: 6px;
+      opacity: 0.8;
+    }
+
+    #spreadHistoryCard canvas {
+      display: block;
+      width: 100%;
+      height: 120px;
+      border-radius: 8px;
+      background: rgba(13, 18, 26, 0.92);
+    }
+  `;
+  document.head?.appendChild(style);
+}
+
+function ensureSpreadHistoryStructure() {
+  ensureSpreadHistoryStyles();
+  const existingCanvas = document.getElementById('spreadHistoryCanvas');
+  if (existingCanvas) {
+    spreadHistoryLatestLabel = document.getElementById('spreadHistoryLatest') || spreadHistoryLatestLabel;
+    return;
+  }
+
+  const metricsEl = document.getElementById('metrics');
+  const host = metricsEl?.parentElement || document.body;
+  if (!host) return;
+
+  const section = document.createElement('section');
+  section.id = 'spreadHistoryCard';
+  section.className = 'spread-history-card';
+
+  const header = document.createElement('div');
+  header.className = 'spread-history-header';
+
+  const title = document.createElement('span');
+  title.className = 'spread-history-title';
+  title.textContent = 'Spread geschiedenis (15 min)';
+  header.appendChild(title);
+
+  const latest = document.createElement('span');
+  latest.id = 'spreadHistoryLatest';
+  latest.className = 'spread-history-latest';
+  latest.textContent = 'Laatste: –';
+  header.appendChild(latest);
+
+  section.appendChild(header);
+
+  const legend = document.createElement('div');
+  legend.className = 'spread-history-legend';
+  legend.textContent = 'Groen = Geschikt';
+  section.appendChild(legend);
+
+  const canvas = document.createElement('canvas');
+  canvas.id = 'spreadHistoryCanvas';
+  canvas.height = 120;
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', 'Spread geschiedenis over de laatste 15 minuten');
+  section.appendChild(canvas);
+
+  if (metricsEl?.parentElement) {
+    metricsEl.parentElement.insertBefore(section, metricsEl.nextSibling);
+  } else {
+    host.appendChild(section);
+  }
+
+  spreadHistoryLatestLabel = latest;
+}
+
+function ensureSpreadHistoryChart() {
+  ensureSpreadHistoryStructure();
+  const canvas = document.getElementById('spreadHistoryCanvas');
+  if (!canvas) return false;
+  if (!spreadHistoryLatestLabel) {
+    spreadHistoryLatestLabel = document.getElementById('spreadHistoryLatest') || spreadHistoryLatestLabel;
+  }
+
+  if (!spreadChartCanvas || spreadChartCanvas !== canvas) {
+    const context = canvas.getContext('2d');
+    if (!context) return false;
+    spreadChartCanvas = canvas;
+    spreadChartCtx = context;
+    spreadChartCanvas.style.width = '100%';
+    if (!spreadChartCanvas.style.height) {
+      spreadChartCanvas.style.height = '120px';
+    }
+    resizeSpreadChart({ skipRender: true });
+    if (!spreadChartHasResizeListener) {
+      window.addEventListener('resize', resizeSpreadChart, { passive: true });
+      spreadChartHasResizeListener = true;
+    }
+  }
+
+  return !!spreadChartCanvas && !!spreadChartCtx;
+}
+
+function resizeSpreadChart(options = {}) {
+  if (!spreadChartCanvas || !spreadChartCtx) return;
+  const ratio = window.devicePixelRatio || 1;
+  const rect = spreadChartCanvas.getBoundingClientRect();
+  const cssWidth = rect.width || spreadChartCanvas.clientWidth || 320;
+  const cssHeight = rect.height || parseFloat(getComputedStyle(spreadChartCanvas).height || '120');
+  if (!cssWidth || !cssHeight) return;
+
+  const width = Math.max(1, Math.round(cssWidth * ratio));
+  const height = Math.max(1, Math.round(cssHeight * ratio));
+
+  let changed = false;
+  if (spreadChartCanvas.width !== width) {
+    spreadChartCanvas.width = width;
+    changed = true;
+  }
+  if (spreadChartCanvas.height !== height) {
+    spreadChartCanvas.height = height;
+    changed = true;
+  }
+
+  spreadChartPixelRatio = ratio;
+
+  if (!options.skipRender && (changed || options.force)) {
+    renderSpreadChart();
+  }
+}
+
+function getMinEdgeRatio() {
+  const value = parseFloat(params?.minEdgePct);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.max(0, value) / 100;
+}
+
+function updateSpreadHistoryLatestLabel() {
+  if (!spreadHistoryLatestLabel) {
+    spreadHistoryLatestLabel = document.getElementById('spreadHistoryLatest') || spreadHistoryLatestLabel;
+  }
+  if (!spreadHistoryLatestLabel) return;
+
+  if (!spreadHistory.length) {
+    spreadHistoryLatestLabel.textContent = 'Laatste: –';
+    return;
+  }
+
+  const last = spreadHistory[spreadHistory.length - 1];
+  const spreadLabel = formatSpreadPercent(last.spreadPct);
+  const minEdgeRatio = getMinEdgeRatio();
+  const meetsEdge = last.showAdvice && isFinite(last.netEdgeRatio) && last.netEdgeRatio >= minEdgeRatio;
+  const parts = [`Laatste: ${spreadLabel}`];
+  if (last.showAdvice && Number.isFinite(last.netEdgePct)) {
+    parts.push(`Edge: ${last.netEdgePct.toFixed(2)}%`);
+  }
+  if (last.showAdvice) {
+    parts.push(meetsEdge ? 'Geschikt' : 'Niet geschikt');
+  }
+  spreadHistoryLatestLabel.textContent = parts.join(' • ');
+}
+
+function renderSpreadChart() {
+  if (!ensureSpreadHistoryChart()) {
+    updateSpreadHistoryLatestLabel();
+    return;
+  }
+  if (!spreadChartCanvas || !spreadChartCtx) return;
+
+  const ratio = spreadChartPixelRatio || window.devicePixelRatio || 1;
+  const width = spreadChartCanvas.width / ratio;
+  const height = spreadChartCanvas.height / ratio;
+  if (!width || !height) {
+    updateSpreadHistoryLatestLabel();
+    return;
+  }
+
+  const ctx = spreadChartCtx;
+  ctx.save();
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = 'rgba(13, 18, 26, 0.92)';
+  ctx.fillRect(0, 0, width, height);
+
+  const cutoff = Date.now() - SPREAD_WINDOW_MS;
+  while (spreadHistory.length && spreadHistory[0].timestamp < cutoff) {
+    spreadHistory.shift();
+  }
+
+  const now = Date.now();
+  const latestTimestamp = spreadHistory.length ? spreadHistory[spreadHistory.length - 1].timestamp : now;
+  const windowEnd = Math.max(latestTimestamp, now);
+  const windowStart = windowEnd - SPREAD_WINDOW_MS;
+  const points = spreadHistory.filter((point) => point.timestamp >= windowStart);
+
+  if (!points.length) {
+    ctx.restore();
+    updateSpreadHistoryLatestLabel();
+    return;
+  }
+
+  let minSpread = Infinity;
+  let maxSpread = -Infinity;
+  points.forEach(({ spreadPct }) => {
+    if (isFinite(spreadPct)) {
+      if (spreadPct < minSpread) minSpread = spreadPct;
+      if (spreadPct > maxSpread) maxSpread = spreadPct;
+    }
+  });
+
+  if (!isFinite(minSpread) || !isFinite(maxSpread)) {
+    minSpread = 0;
+    maxSpread = 0.0001;
+  }
+
+  if (maxSpread - minSpread < 1e-6) {
+    const base = maxSpread || 0.0001;
+    minSpread = Math.max(0, base * 0.5);
+    maxSpread = base * 1.5;
+  } else {
+    const padding = (maxSpread - minSpread) * 0.2;
+    minSpread = Math.max(0, minSpread - padding);
+    maxSpread += padding;
+  }
+
+  const span = maxSpread - minSpread || 1;
+  const toX = (timestamp) => {
+    const clamped = Math.min(Math.max(timestamp, windowStart), windowEnd);
+    return ((clamped - windowStart) / SPREAD_WINDOW_MS) * width;
+  };
+  const toY = (value) => {
+    if (!isFinite(value)) return height;
+    const normalized = (value - minSpread) / span;
+    return height - normalized * height;
+  };
+
+  const minEdgeRatio = getMinEdgeRatio();
+  ctx.fillStyle = 'rgba(60, 166, 106, 0.18)';
+  let segmentStart = null;
+  for (let i = 0; i < points.length; i += 1) {
+    const point = points[i];
+    const meetsEdge = point.showAdvice && isFinite(point.netEdgeRatio) && point.netEdgeRatio >= minEdgeRatio;
+    const currentTime = Math.max(point.timestamp, windowStart);
+    if (meetsEdge) {
+      if (segmentStart === null) {
+        segmentStart = currentTime;
+      }
+    } else if (segmentStart !== null) {
+      const x1 = toX(segmentStart);
+      const x2 = toX(currentTime);
+      if (x2 > x1) {
+        ctx.fillRect(x1, 0, x2 - x1, height);
+      }
+      segmentStart = null;
+    }
+
+    if (i === points.length - 1 && segmentStart !== null) {
+      const x1 = toX(segmentStart);
+      const x2 = toX(windowEnd);
+      if (x2 > x1) {
+        ctx.fillRect(x1, 0, x2 - x1, height);
+      }
+      segmentStart = null;
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+  ctx.lineWidth = 1;
+  const gridLines = 4;
+  for (let i = 1; i < gridLines; i += 1) {
+    const y = (height / gridLines) * i;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(200, 167, 106, 0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    const x = toX(point.timestamp);
+    const y = toY(point.spreadPct);
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+
+  const lastPoint = points[points.length - 1];
+  const lastX = toX(lastPoint.timestamp);
+  const lastY = toY(lastPoint.spreadPct);
+  ctx.fillStyle = 'rgba(200, 167, 106, 0.9)';
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(154, 163, 173, 0.85)';
+  ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${(maxSpread * 100).toFixed(2)}%`, width - 4, 12);
+  ctx.fillText(`${(minSpread * 100).toFixed(2)}%`, width - 4, height - 4);
+
+  ctx.restore();
+
+  updateSpreadHistoryLatestLabel();
+}
+
+function recordSpreadPoint(entry) {
+  if (!entry) return;
+  const timestamp = Number(entry.timestamp);
+  if (!Number.isFinite(timestamp)) return;
+  const spreadPctValue = Number(entry.spreadPct);
+  const bestBidValue = Number(entry.bestBid);
+  const bestAskValue = Number(entry.bestAsk);
+  const netEdgeRatioValue = Number(entry.netEdgeRatio);
+  const netEdgePctValue = Number(entry.netEdgePct);
+
+  spreadHistory.push({
+    timestamp,
+    spreadPct: Number.isFinite(spreadPctValue) ? spreadPctValue : NaN,
+    bestBid: Number.isFinite(bestBidValue) ? bestBidValue : NaN,
+    bestAsk: Number.isFinite(bestAskValue) ? bestAskValue : NaN,
+    netEdgeRatio: Number.isFinite(netEdgeRatioValue) ? netEdgeRatioValue : NaN,
+    netEdgePct: Number.isFinite(netEdgePctValue) ? netEdgePctValue : NaN,
+    showAdvice: Boolean(entry.showAdvice),
+  });
+  const cutoff = Date.now() - SPREAD_WINDOW_MS;
+  while (spreadHistory.length && spreadHistory[0].timestamp < cutoff) {
+    spreadHistory.shift();
+  }
+  renderSpreadChart();
+}
 
 const EDGE_STATE_CLASSES = ['edge-negative', 'edge-breakeven', 'edge-positive'];
 
@@ -422,6 +791,13 @@ const updateMetrics = () => {
   );
 
   updateBadge(result.go, result.showAdvice);
+  return result;
+};
+
+const refreshMetrics = () => {
+  const result = updateMetrics();
+  renderSpreadChart();
+  return result;
 };
 
 const loadSettings = () => {
@@ -455,7 +831,7 @@ const loadSettings = () => {
     }
   }
   updateTickInfo();
-  updateMetrics();
+  refreshMetrics();
 };
 
 const persistSettings = () => {
@@ -465,7 +841,7 @@ const persistSettings = () => {
 const readParam = (target, key) => {
   const value = parseFloat(target.value);
   if (!isFinite(value)) {
-    updateMetrics();
+    refreshMetrics();
     return;
   }
 
@@ -482,14 +858,14 @@ const readParam = (target, key) => {
   } else {
     params[key] = Math.max(0, value);
   }
-  updateMetrics();
+  refreshMetrics();
   persistSettings();
 };
 
 const readRoute = (target) => {
   const value = target.value;
   params.routeProfile = ROUTE_VALUES.has(value) ? value : defaults.routeProfile;
-  updateMetrics();
+  refreshMetrics();
   persistSettings();
 };
 
@@ -547,7 +923,16 @@ const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth, 
   if (source) {
     els.sourceInfo.textContent = source === 'ws' ? 'Bron: Bitvavo WebSocket' : 'Bron: Binance (poll)';
   }
-  updateMetrics();
+  const result = updateMetrics();
+  recordSpreadPoint({
+    timestamp,
+    spreadPct,
+    bestBid: bid,
+    bestAsk: ask,
+    netEdgeRatio: result?.netEdgeRatio,
+    netEdgePct: result?.netEdgePct,
+    showAdvice: Boolean(result?.showAdvice),
+  });
 };
 
 const handleSourceChange = (source) => {
@@ -572,7 +957,7 @@ const registerManualValidation = () => {
     const target = event.target;
     if (!target || !(target instanceof HTMLInputElement)) return;
     if (!('enforceTick' in target.dataset)) return;
-    updateMetrics();
+    refreshMetrics();
   };
 
   document.addEventListener('input', handler);
@@ -603,7 +988,7 @@ const applyMarketSpecifications = (spec) => {
   if (tickChanged) {
     persistSettings();
   }
-  updateMetrics();
+  refreshMetrics();
 };
 
 const loadMarketSpecifications = async () => {
@@ -633,6 +1018,7 @@ const registerActions = () => {
 };
 
 const start = () => {
+  ensureSpreadHistoryStructure();
   loadSettings();
   registerSettings();
   registerManualValidation();
