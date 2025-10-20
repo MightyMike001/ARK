@@ -1,5 +1,5 @@
-import { compute } from './calc.js';
-import { startDataFeed } from './data.js';
+import { compute, isOnTick } from './calc.js';
+import { startDataFeed, fetchMarketSpecifications } from './data.js';
 
 const ROUTE_OPTIONS = [
   { value: 'maker-maker', label: 'Maker/Maker' },
@@ -56,6 +56,32 @@ const ensureSettingsControls = () => {
       form.appendChild(label);
     }
   }
+
+  if (!document.getElementById('priceWarning')) {
+    const warning = document.createElement('div');
+    warning.id = 'priceWarning';
+    warning.className = 'hint';
+    warning.style.display = 'none';
+    warning.setAttribute('role', 'status');
+    warning.setAttribute('aria-live', 'polite');
+    form.appendChild(warning);
+  }
+
+  if (!document.getElementById('tickValidationStyles')) {
+    const style = document.createElement('style');
+    style.id = 'tickValidationStyles';
+    style.textContent = `
+      .tick-invalid {
+        border-color: #d9534f !important;
+        box-shadow: 0 0 0 1px rgba(217, 83, 79, 0.35);
+      }
+
+      #priceWarning {
+        color: #d9534f;
+      }
+    `;
+    document.head?.appendChild(style);
+  }
 };
 
 const ensureMetricsStructure = () => {
@@ -95,6 +121,7 @@ const els = {
   minEdge: document.getElementById('minEdge'),
   position: document.getElementById('position'),
   tick: document.getElementById('tick'),
+  priceWarning: document.getElementById('priceWarning'),
 };
 
 const defaults = {
@@ -111,10 +138,43 @@ const storageKey = 'ark_advice_settings_v1';
 let lastTick;
 let latestBidAsk = { bid: NaN, ask: NaN };
 let params = { ...defaults };
+let quoteDecimals = 4;
+let manualInvalidSides = new Set();
+let manualPriceError = '';
+
+const decimalsFromTick = (tickValue = params.tick) => {
+  const tick = typeof tickValue === 'string' ? parseFloat(tickValue) : tickValue;
+  if (!isFinite(tick) || tick <= 0) return 4;
+  const text = tick.toString();
+  if (text.includes('e')) {
+    const [base, exp] = text.split('e');
+    const baseDecimals = (base.split('.')[1] || '').length;
+    const exponent = parseInt(exp, 10);
+    return Math.max(0, baseDecimals - exponent);
+  }
+  return Math.max(0, (text.split('.')[1] || '').length);
+};
+
+const limitPriceDecimals = (value) => Math.min(Math.max(value, 0), 8);
+
+const getPriceDecimals = () => {
+  const tickDecimals = decimalsFromTick();
+  if (Number.isFinite(quoteDecimals) && quoteDecimals >= 0) {
+    return Math.max(tickDecimals, quoteDecimals);
+  }
+  return Math.max(tickDecimals, 4);
+};
+
+const formatTickSize = (tickValue = params.tick) => {
+  const tick = typeof tickValue === 'string' ? parseFloat(tickValue) : tickValue;
+  if (!isFinite(tick) || tick <= 0) return '–';
+  const decimals = limitPriceDecimals(decimalsFromTick(tick));
+  return `€${tick.toFixed(decimals)}`;
+};
 
 const formatPrice = (value) => {
   if (!isFinite(value)) return '–';
-  return `€${value.toFixed(4)}`;
+  return `€${value.toFixed(limitPriceDecimals(getPriceDecimals()))}`;
 };
 
 const formatPercent = (value) => {
@@ -144,6 +204,113 @@ const formatDepth = (notional, volume) => {
   return `€${euroText} • ${volumeText} ARK`;
 };
 
+const setPriceWarning = (message) => {
+  if (!els.priceWarning) return;
+  if (message) {
+    els.priceWarning.textContent = message;
+    els.priceWarning.style.display = 'block';
+  } else {
+    els.priceWarning.textContent = '';
+    els.priceWarning.style.display = 'none';
+  }
+};
+
+const applyActionState = (button, enabled, message) => {
+  if (!button) return;
+  button.disabled = !enabled;
+  if (!enabled && message) {
+    button.title = message;
+    button.setAttribute('aria-disabled', 'true');
+  } else {
+    button.removeAttribute('title');
+    button.removeAttribute('aria-disabled');
+  }
+};
+
+const validatePriceInputs = () => {
+  const inputs = Array.from(document.querySelectorAll('[data-enforce-tick]'));
+  const invalidSides = new Set();
+  let message = '';
+  const tickValue = params.tick;
+
+  if (!inputs.length) {
+    return { invalidSides, message };
+  }
+
+  if (!isFinite(tickValue) || tickValue <= 0) {
+    inputs.forEach((input) => {
+      if (!(input instanceof HTMLInputElement)) return;
+      input.setCustomValidity('');
+      input.classList.remove('tick-invalid');
+      input.removeAttribute('title');
+    });
+    return { invalidSides, message };
+  }
+
+  const tickText = formatTickSize(tickValue);
+  const baseMessage = tickText === '–'
+    ? 'Prijs moet een veelvoud zijn van de tick size.'
+    : `Prijs moet een veelvoud zijn van ${tickText}.`;
+
+  inputs.forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) return;
+    const raw = typeof input.value === 'string' ? input.value.replace(',', '.') : '';
+    const numeric = parseFloat(raw);
+    if (!isFinite(numeric)) {
+      input.setCustomValidity('');
+      input.classList.remove('tick-invalid');
+      input.removeAttribute('title');
+      return;
+    }
+
+    if (isOnTick(numeric, tickValue)) {
+      input.setCustomValidity('');
+      input.classList.remove('tick-invalid');
+      input.removeAttribute('title');
+      return;
+    }
+
+    input.setCustomValidity(baseMessage);
+    input.classList.add('tick-invalid');
+    input.title = baseMessage;
+
+    const side = (input.dataset.side || '').toLowerCase();
+    if (side === 'buy' || side === 'sell') {
+      invalidSides.add(side);
+    } else {
+      invalidSides.add('buy');
+      invalidSides.add('sell');
+    }
+
+    if (!message) {
+      message = baseMessage;
+    }
+  });
+
+  return { invalidSides, message };
+};
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return 'Laatste tick: –';
+  const date = new Date(timestamp);
+  return `Laatste tick: ${date.toLocaleTimeString('nl-NL', { hour12: false })}`;
+};
+
+const updateTickInfo = () => {
+  if (!els.tickInfo) return;
+  const tickText = formatTickSize(params.tick);
+  const tickLabel = tickText === '–' ? 'Tick size: onbekend' : `Tick size: ${tickText}`;
+  const timeLabel = formatTime(lastTick);
+  els.tickInfo.textContent = `${tickLabel} • ${timeLabel}`;
+
+  if (els.tick && isFinite(params.tick) && params.tick > 0) {
+    const decimals = limitPriceDecimals(decimalsFromTick(params.tick));
+    els.tick.value = params.tick.toFixed(decimals);
+    els.tick.step = params.tick.toString();
+    els.tick.min = params.tick.toString();
+  }
+};
+
 const updateBadge = (go) => {
   els.badge.textContent = go ? 'GO' : 'NO-GO';
   els.badge.classList.toggle('go', go);
@@ -160,6 +327,46 @@ const updateMetrics = () => {
     els.roundTrip.textContent = formatPercent(result.roundTripFeePct);
   }
   els.pnl.textContent = formatMoney(result.pnl);
+
+  const tickValue = params.tick;
+  const hasBuy = isFinite(result.buy);
+  const hasSell = isFinite(result.sell);
+  const buyOnTick = !hasBuy || isOnTick(result.buy, tickValue);
+  const sellOnTick = !hasSell || isOnTick(result.sell, tickValue);
+
+  const validation = validatePriceInputs();
+  manualInvalidSides = validation.invalidSides;
+  manualPriceError = validation.message;
+
+  const tickMessage = ((hasBuy && !buyOnTick) || (hasSell && !sellOnTick))
+    && isFinite(tickValue) && tickValue > 0
+    ? `Adviesprijs moet een veelvoud zijn van ${formatTickSize(tickValue)}.`
+    : '';
+
+  const buyMessage = manualInvalidSides.has('buy')
+    ? manualPriceError
+    : (hasBuy && !buyOnTick ? tickMessage : '');
+  const sellMessage = manualInvalidSides.has('sell')
+    ? manualPriceError
+    : (hasSell && !sellOnTick ? tickMessage : '');
+
+  const warningMessage = buyMessage || sellMessage;
+  setPriceWarning(warningMessage);
+
+  const buyEnabled = hasBuy && !buyMessage;
+  const sellEnabled = hasSell && !sellMessage;
+
+  applyActionState(
+    els.copyBuy,
+    buyEnabled,
+    buyMessage || (!hasBuy ? 'Nog geen koopadvies beschikbaar.' : '')
+  );
+  applyActionState(
+    els.copySell,
+    sellEnabled,
+    sellMessage || (!hasSell ? 'Nog geen verkoopadvies beschikbaar.' : '')
+  );
+
   updateBadge(result.go);
 };
 
@@ -176,13 +383,24 @@ const loadSettings = () => {
     : defaults.routeProfile;
   params.routeProfile = routeValue;
 
+  const parsedTick = parseFloat(params.tick);
+  params.tick = isFinite(parsedTick) && parsedTick > 0 ? parsedTick : defaults.tick;
+
   if (els.makerFee) els.makerFee.value = params.makerFeePct;
   if (els.takerFee) els.takerFee.value = params.takerFeePct;
   if (els.route) els.route.value = params.routeProfile;
   if (els.slippage) els.slippage.value = params.slippagePct;
   if (els.minEdge) els.minEdge.value = params.minEdgePct;
   if (els.position) els.position.value = params.positionEur;
-  if (els.tick) els.tick.value = params.tick;
+  if (els.tick) {
+    const decimals = limitPriceDecimals(decimalsFromTick(params.tick));
+    els.tick.value = isFinite(params.tick) ? params.tick.toFixed(decimals) : '';
+    if (params.tick > 0) {
+      els.tick.step = params.tick;
+      els.tick.min = params.tick;
+    }
+  }
+  updateTickInfo();
   updateMetrics();
 };
 
@@ -192,7 +410,22 @@ const persistSettings = () => {
 
 const readParam = (target, key) => {
   const value = parseFloat(target.value);
-  if (isFinite(value)) {
+  if (!isFinite(value)) {
+    updateMetrics();
+    return;
+  }
+
+  if (key === 'tick') {
+    if (value > 0) {
+      params.tick = value;
+    } else if (isFinite(params.tick) && params.tick > 0) {
+      target.value = params.tick;
+    } else {
+      params.tick = defaults.tick;
+      target.value = defaults.tick;
+    }
+    updateTickInfo();
+  } else {
     params[key] = Math.max(0, value);
   }
   updateMetrics();
@@ -230,12 +463,6 @@ const registerSettings = () => {
   }
 };
 
-const formatTime = (timestamp) => {
-  if (!timestamp) return 'Laatste tick: –';
-  const date = new Date(timestamp);
-  return `Laatste tick: ${date.toLocaleTimeString('nl-NL', { hour12: false })}`;
-};
-
 const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth }) => {
   latestBidAsk = { bid, ask };
   lastTick = timestamp;
@@ -255,7 +482,7 @@ const handleTick = ({ bid, ask, timestamp, source, spreadAbs, spreadPct, depth }
       els.askDepth.textContent = formatDepth(depth.askNotional, depth.askVolume);
     }
   }
-  els.tickInfo.textContent = formatTime(lastTick);
+  updateTickInfo();
   if (source) {
     els.sourceInfo.textContent = source === 'ws' ? 'Bron: Bitvavo WebSocket' : 'Bron: Binance (poll)';
   }
@@ -272,41 +499,85 @@ const handleSourceChange = (source) => {
   }
 };
 
-const decimalsFromTick = () => {
-  const tick = params.tick;
-  if (!isFinite(tick) || tick <= 0) return 4;
-  const text = tick.toString();
-  if (text.includes('e')) {
-    const [base, exp] = text.split('e');
-    const baseDecimals = (base.split('.')[1] || '').length;
-    const exponent = parseInt(exp, 10);
-    return Math.max(0, baseDecimals - exponent);
-  }
-  return Math.max(0, (text.split('.')[1] || '').length);
-};
-
 const copyToClipboard = (value) => {
   if (!isFinite(value) || !navigator.clipboard) return;
-  const decimals = Math.max(0, decimalsFromTick());
+  if (!isOnTick(value, params.tick)) return;
+  const decimals = limitPriceDecimals(getPriceDecimals());
   navigator.clipboard.writeText(value.toFixed(decimals));
 };
 
+const registerManualValidation = () => {
+  const handler = (event) => {
+    const target = event.target;
+    if (!target || !(target instanceof HTMLInputElement)) return;
+    if (!('enforceTick' in target.dataset)) return;
+    updateMetrics();
+  };
+
+  document.addEventListener('input', handler);
+  document.addEventListener('change', handler);
+};
+
+const applyMarketSpecifications = (spec) => {
+  if (!spec || typeof spec !== 'object') return;
+
+  const { tickSize, amountQuoteDecimals } = spec;
+  let tickChanged = false;
+
+  if (isFinite(tickSize) && tickSize > 0) {
+    const previousTick = params.tick;
+    const tolerance = Math.max(Number.EPSILON, tickSize * 1e-8);
+    if (!isFinite(previousTick) || Math.abs(previousTick - tickSize) > tolerance) {
+      tickChanged = true;
+    }
+    params.tick = tickSize;
+  }
+
+  const decimalsValue = Number(amountQuoteDecimals);
+  if (Number.isFinite(decimalsValue) && decimalsValue >= 0) {
+    quoteDecimals = decimalsValue;
+  }
+
+  updateTickInfo();
+  if (tickChanged) {
+    persistSettings();
+  }
+  updateMetrics();
+};
+
+const loadMarketSpecifications = async () => {
+  try {
+    const spec = await fetchMarketSpecifications();
+    if (spec) {
+      applyMarketSpecifications(spec);
+    }
+  } catch (err) {
+    console.warn('Kon marktspecificaties niet laden', err);
+  }
+};
+
 const registerActions = () => {
-  els.copyBuy.addEventListener('click', () => {
-    const result = compute(latestBidAsk.bid, latestBidAsk.ask, params);
-    copyToClipboard(result.buy);
-  });
-  els.copySell.addEventListener('click', () => {
-    const result = compute(latestBidAsk.bid, latestBidAsk.ask, params);
-    copyToClipboard(result.sell);
-  });
+  if (els.copyBuy) {
+    els.copyBuy.addEventListener('click', () => {
+      const result = compute(latestBidAsk.bid, latestBidAsk.ask, params);
+      copyToClipboard(result.buy);
+    });
+  }
+  if (els.copySell) {
+    els.copySell.addEventListener('click', () => {
+      const result = compute(latestBidAsk.bid, latestBidAsk.ask, params);
+      copyToClipboard(result.sell);
+    });
+  }
 };
 
 const start = () => {
   loadSettings();
   registerSettings();
+  registerManualValidation();
   registerActions();
   startDataFeed(handleTick, handleSourceChange);
+  loadMarketSpecifications();
 };
 
 start();
