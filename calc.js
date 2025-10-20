@@ -81,33 +81,6 @@ const toTopLevels = (levels) => {
 
 const sumNotional = (levels) => levels.reduce((total, [price, size]) => total + price * size, 0);
 
-const depthWeightedPrice = (levels, targetNotional, fallbackPrice) => {
-  if (!isFinite(targetNotional) || targetNotional <= 0 || !levels.length) {
-    return fallbackPrice;
-  }
-
-  let remaining = targetNotional;
-  let notional = 0;
-  let quantity = 0;
-
-  for (const [price, size] of levels) {
-    const levelNotional = price * size;
-    if (levelNotional <= 0) continue;
-
-    const takeNotional = Math.min(remaining, levelNotional);
-    const takeQuantity = takeNotional / price;
-    notional += takeNotional;
-    quantity += takeQuantity;
-    remaining -= takeNotional;
-
-    if (remaining <= 1e-9) break;
-  }
-
-  if (!quantity) return fallbackPrice;
-  const average = notional / quantity;
-  return isFinite(average) ? average : fallbackPrice;
-};
-
 export function compute(bid, ask, params, book = {}) {
   const {
     makerFeePct,
@@ -130,8 +103,12 @@ export function compute(bid, ask, params, book = {}) {
   const feeBuy = buyFeePct / 100;
   const feeSell = sellFeePct / 100;
   const slip = slippage / 100;
-  const roundTripFeePct = buyFeePct + sellFeePct;
-  const breakevenSpreadPct = roundTripFeePct + 2 * slippage;
+  const minEdgePctValue = sanitizePct(minEdgePct);
+  const minEdgeRatio = minEdgePctValue / 100;
+  const roundTripFeeRatio = feeBuy + feeSell;
+  const roundTripFeePct = roundTripFeeRatio * 100;
+  const breakevenSpreadRatio = roundTripFeeRatio + 2 * slip;
+  const breakevenSpreadPct = breakevenSpreadRatio * 100;
 
   if (!isFinite(bid) || !isFinite(ask) || bid <= 0 || ask <= 0) {
     return {
@@ -144,17 +121,19 @@ export function compute(bid, ask, params, book = {}) {
       showAdvice: false,
       edgeState: 'neutral',
       spreadPct: NaN,
-      spreadThreshold: clampDecimals(breakevenSpreadPct + (minEdgePct || 0), 2),
-      minEdge: minEdgePct,
+      spreadThreshold: clampDecimals(breakevenSpreadPct + minEdgePctValue, 2),
+      minEdge: minEdgePctValue,
       roundTripFeePct: clampDecimals(roundTripFeePct, 2),
     };
   }
 
   const spreadAbs = ask - bid;
   const mid = (bid + ask) / 2;
-  const spreadPct = mid > 0 ? (spreadAbs / mid) * 100 : NaN;
+  const spreadRatio = mid > 0 ? spreadAbs / mid : NaN;
 
-  const spreadThreshold = breakevenSpreadPct + (minEdgePct || 0);
+  const spreadPct = isFinite(spreadRatio) ? spreadRatio * 100 : NaN;
+
+  const spreadThreshold = breakevenSpreadPct + minEdgePctValue;
 
   const candidateBuy = Math.min(bid + safeTick, ask - safeTick);
   const candidateSell = Math.max(ask - safeTick, bid + safeTick);
@@ -178,29 +157,27 @@ export function compute(bid, ask, params, book = {}) {
     && ((buyDepthNotional > 0 && orderValue > buyDepthNotional * 0.25)
       || (sellDepthNotional > 0 && orderValue > sellDepthNotional * 0.25));
 
-  const depthAdjustedBuy = depthWeightedPrice(askLevels, orderValue, buy);
-  const depthAdjustedSell = depthWeightedPrice(bidLevels, orderValue, sell);
-
-  const effectiveBuy = depthAdjustedBuy * (1 + feeBuy + slip);
-  const effectiveSell = depthAdjustedSell * (1 - feeSell - slip);
-
-  const diff = effectiveSell - effectiveBuy;
-  const edge = effectiveBuy > 0 ? (diff / effectiveBuy) * 100 : NaN;
-  const pnl = effectiveBuy > 0 ? (positionEur || 0) * (diff / effectiveBuy) : 0;
-  const showAdvice = isFinite(spreadPct) && spreadPct >= spreadThreshold;
+  const netEdgeRatio = isFinite(spreadRatio)
+    ? spreadRatio - roundTripFeeRatio - 2 * slip
+    : NaN;
+  const edge = isFinite(netEdgeRatio) ? netEdgeRatio * 100 : NaN;
+  const pnlRaw = isFinite(netEdgeRatio) ? orderValue * netEdgeRatio : NaN;
+  const pnl = isFinite(pnlRaw) ? pnlRaw : NaN;
+  const showAdvice = isFinite(netEdgeRatio);
+  const meetsEdge = showAdvice && netEdgeRatio >= minEdgeRatio;
 
   let edgeState = 'neutral';
-  if (isFinite(edge)) {
-    if (edge < 0) {
+  if (isFinite(netEdgeRatio)) {
+    if (netEdgeRatio < 0) {
       edgeState = 'negative';
-    } else if (edge >= (minEdgePct || 0)) {
+    } else if (netEdgeRatio >= minEdgeRatio) {
       edgeState = 'positive';
     } else {
       edgeState = 'breakeven';
     }
   }
 
-  const go = showAdvice && edgeState === 'positive';
+  const go = meetsEdge;
 
   return {
     buy: showAdvice ? buy : NaN,
@@ -213,7 +190,7 @@ export function compute(bid, ask, params, book = {}) {
     edgeState,
     spreadPct: clampDecimals(spreadPct, 3),
     spreadThreshold: clampDecimals(spreadThreshold, 2),
-    minEdge: minEdgePct,
+    minEdge: minEdgePctValue,
     roundTripFeePct: clampDecimals(roundTripFeePct, 2),
     sizeWarning: depthWarning ? 'Size te groot t.o.v. depth' : '',
   };

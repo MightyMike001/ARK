@@ -99,7 +99,7 @@ const ensureSettingsControls = () => {
 const ensureMetricsStructure = () => {
   const metricsEl = document.getElementById('metrics');
   if (!metricsEl) return;
-  metricsEl.innerHTML = `Net edge: <strong id="edgeValue">–</strong>% • `
+  metricsEl.innerHTML = `Netto edge%: <strong id="edgeValue">–</strong>% • `
     + `Breakeven spread%: <strong id="breakevenValue">–</strong>% • `
     + `Roundtrip fees: <strong id="roundTripValue">–</strong>% • `
     + `P&L/cyclus: <strong id="pnlValue">–</strong>`;
@@ -326,8 +326,16 @@ const updateTickInfo = () => {
   }
 };
 
-const updateBadge = (go) => {
-  els.badge.textContent = go ? 'GO' : 'NO-GO';
+const updateBadge = (go, showAdvice) => {
+  if (!els.badge) return;
+  if (!showAdvice) {
+    els.badge.textContent = '–';
+    els.badge.classList.remove('go');
+    els.badge.classList.remove('nogo');
+    return;
+  }
+
+  els.badge.textContent = go ? 'Geschikt?' : 'Niet geschikt';
   els.badge.classList.toggle('go', go);
   els.badge.classList.toggle('nogo', !go);
 };
@@ -385,7 +393,12 @@ const updateMetrics = () => {
   if (buyMessage && !warnings.includes(buyMessage)) warnings.push(buyMessage);
   if (sellMessage && !warnings.includes(sellMessage)) warnings.push(sellMessage);
 
-  const generalAdviceMessage = result.showAdvice ? '' : 'Spread te smal voor advies.';
+  let generalAdviceMessage = '';
+  if (!result.showAdvice) {
+    generalAdviceMessage = 'Spread te smal voor advies.';
+  } else if (!result.go) {
+    generalAdviceMessage = 'Netto edge onder minimumdrempel.';
+  }
   if (!warnings.length && generalAdviceMessage) {
     warnings.push(generalAdviceMessage);
   }
@@ -408,7 +421,7 @@ const updateMetrics = () => {
     sellMessage || (!hasSell ? spreadLimitedMessage || 'Nog geen verkoopadvies beschikbaar.' : '')
   );
 
-  updateBadge(result.go);
+  updateBadge(result.go, result.showAdvice);
 };
 
 const loadSettings = () => {
