@@ -68,8 +68,10 @@ export async function fetchOrderBook(market = DEFAULT_MARKET, depth = 25) {
 
 const normalizeTickerPayload = (payload, marketId) => {
   if (!payload) return null;
-  const market = (payload.market || payload.Market || '').toUpperCase();
-  if (market && market !== marketId) return null;
+  const rawMarket = (payload.market || payload.Market || '').toUpperCase();
+  const resolvedMarket = marketId || rawMarket;
+  if (!resolvedMarket) return null;
+  if (marketId && rawMarket && rawMarket !== marketId) return null;
 
   const volumeBase = parseNumber(
     payload.volume
@@ -90,7 +92,7 @@ const normalizeTickerPayload = (payload, marketId) => {
   const timestamp = parseNumber(payload.timestamp ?? payload.time) || Date.now();
 
   return {
-    market: marketId,
+    market: resolvedMarket,
     volumeBase: Number.isFinite(volumeBase) && volumeBase >= 0 ? volumeBase : NaN,
     volumeQuote: Number.isFinite(volumeQuote) && volumeQuote >= 0 ? volumeQuote : NaN,
     bid: Number.isFinite(bestBid) && bestBid > 0 ? bestBid : NaN,
@@ -118,6 +120,56 @@ export async function fetchTicker24hStats(market = DEFAULT_MARKET) {
   } catch (err) {
     console.warn('Kon ticker24h niet ophalen', err);
     return null;
+  }
+}
+
+export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 } = {}) {
+  const url = `${BITVAVO_BASE_URL}/ticker/24h`;
+  try {
+    const payload = await fetchJson(url);
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.ticker24h)
+        ? payload.ticker24h
+        : [];
+
+    const normalized = list
+      .map((item) => normalizeTickerPayload(item))
+      .filter((item) => item && typeof item.market === 'string' && item.market.endsWith('-EUR'))
+      .map((item) => {
+        const spreadAbs = Number.isFinite(item.ask) && Number.isFinite(item.bid)
+          ? item.ask - item.bid
+          : NaN;
+        const mid = Number.isFinite(item.ask) && Number.isFinite(item.bid)
+          ? (item.ask + item.bid) / 2
+          : NaN;
+        const spreadPct = Number.isFinite(spreadAbs) && Number.isFinite(mid) && mid > 0
+          ? (spreadAbs / mid) * 100
+          : NaN;
+        const volumeEur = Number.isFinite(item.volumeQuote) ? item.volumeQuote : NaN;
+        const score = Number.isFinite(spreadPct) && Number.isFinite(volumeEur)
+          ? spreadPct * Math.log10(volumeEur + 1)
+          : NaN;
+
+        return {
+          ...item,
+          spreadAbs: Number.isFinite(spreadAbs) ? spreadAbs : NaN,
+          spreadPct: Number.isFinite(spreadPct) ? spreadPct : NaN,
+          volumeEur,
+          score: Number.isFinite(score) ? score : NaN,
+        };
+      })
+      .filter((item) => item.spreadPct > 0 && item.volumeEur >= minVolumeEur && Number.isFinite(item.score));
+
+    const sorted = normalized.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.spreadPct !== a.spreadPct) return b.spreadPct - a.spreadPct;
+      return (b.volumeEur || 0) - (a.volumeEur || 0);
+    });
+    return sorted.slice(0, limit);
+  } catch (err) {
+    console.warn('Kon top spreads niet ophalen', err);
+    return [];
   }
 }
 

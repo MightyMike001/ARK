@@ -3,6 +3,7 @@ import {
   DEFAULT_MARKET,
   fetchMarketSpecifications,
   fetchTicker24hStats,
+  fetchTopSpreadMarkets,
   subscribeOrderBook,
 } from './data.js';
 
@@ -29,6 +30,7 @@ const state = { ...defaultParams };
 let stopSubscription = null;
 let lastSnapshot = null;
 let lastTicker = null;
+let topSpreadsTimer = null;
 
 const qs = (selector) => document.querySelector(selector);
 
@@ -58,6 +60,8 @@ const els = {
   breakeven: qs('[data-breakeven]'),
   volume: qs('[data-volume]'),
   updated: qs('[data-updated]'),
+  topSpreadsBody: qs('[data-top-spreads]'),
+  topSpreadsUpdated: qs('[data-top-spreads-updated]'),
 };
 
 function setStatus(message, tone = 'neutral') {
@@ -81,6 +85,14 @@ function formatMoney(value) {
   return `€${value.toFixed(2)}`;
 }
 
+function formatNumber(value, digits = 2) {
+  if (!Number.isFinite(value)) return '–';
+  return value.toLocaleString('nl-NL', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 function formatVolume(ticker) {
   if (!ticker) return '–';
   const parts = [];
@@ -91,6 +103,69 @@ function formatVolume(ticker) {
     parts.push(`${ticker.volumeBase.toLocaleString('nl-NL', { maximumFractionDigits: 0 })} ARK`);
   }
   return parts.length ? parts.join(' • ') : '–';
+}
+
+function renderTopSpreads(list = []) {
+  if (!els.topSpreadsBody) return;
+  if (!Array.isArray(list) || list.length === 0) {
+    els.topSpreadsBody.innerHTML = '<tr><td colspan="7">Geen data beschikbaar</td></tr>';
+    if (els.topSpreadsUpdated) {
+      els.topSpreadsUpdated.textContent = '–';
+    }
+    return;
+  }
+
+  const rows = list
+    .map((item, index) => {
+      const rank = index + 1;
+      const market = item.market || '–';
+      const spreadPct = formatPercent(item.spreadPct, 2);
+      const spreadAbs = formatPrice(item.spreadAbs, 6);
+      const volume = Number.isFinite(item.volumeEur)
+        ? `€${formatNumber(item.volumeEur, 0)}`
+        : '–';
+      const bid = formatPrice(item.bid, 5);
+      const ask = formatPrice(item.ask, 5);
+      return `
+        <tr>
+          <td class="rank">${rank}</td>
+          <td>${market}</td>
+          <td>${spreadPct}</td>
+          <td>${spreadAbs}</td>
+          <td>${volume}</td>
+          <td>${bid}</td>
+          <td>${ask}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  els.topSpreadsBody.innerHTML = rows;
+  if (els.topSpreadsUpdated) {
+    const time = new Date().toLocaleTimeString('nl-NL', { hour12: false });
+    els.topSpreadsUpdated.textContent = time;
+  }
+}
+
+async function refreshTopSpreads() {
+  try {
+    const list = await fetchTopSpreadMarkets({ limit: 10, minVolumeEur: 100000 });
+    renderTopSpreads(list);
+  } catch (err) {
+    console.warn('Kon top spreads niet verversen', err);
+    renderTopSpreads([]);
+  }
+}
+
+function startTopSpreadsUpdates(intervalMs = 60000) {
+  if (topSpreadsTimer) {
+    clearInterval(topSpreadsTimer);
+  }
+  const refreshInterval = Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 60000;
+  topSpreadsTimer = setInterval(() => {
+    refreshTopSpreads();
+  }, refreshInterval);
+  refreshTopSpreads();
 }
 
 function updateMetrics(snapshot, result) {
@@ -303,6 +378,7 @@ function init() {
   wireEvents();
   restartSubscription();
   refreshMarketMeta();
+  startTopSpreadsUpdates();
 }
 
 if (document.readyState === 'loading') {
