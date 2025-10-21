@@ -226,7 +226,7 @@ const computeLimitAdvice = ({
 const buildProxiedUrl = (url) => {
   const trimmed = typeof url === 'string' ? url.trim() : '';
   if (!trimmed) return trimmed;
-  const encoded = encodeURI(trimmed);
+  const encoded = encodeURIComponent(trimmed);
   return `${BITVAVO_CORS_PROXY}${encoded}`;
 };
 
