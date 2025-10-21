@@ -137,8 +137,27 @@ export function compute(bid, ask, params, book = {}) {
 
   const spreadThreshold = breakevenSpreadPct + minEdgePctValue;
 
-  const candidateBuy = Math.min(bid + safeTick, ask - safeTick);
-  const candidateSell = Math.max(ask - safeTick, bid + safeTick);
+  const hasMeaningfulSpread = Number.isFinite(spreadAbs) && spreadAbs > safeTick;
+
+  let candidateBuy = hasMeaningfulSpread
+    ? Math.min(bid + safeTick, ask - safeTick)
+    : bid;
+  if (!Number.isFinite(candidateBuy) || candidateBuy <= 0) {
+    candidateBuy = bid;
+  }
+  if (candidateBuy < bid) {
+    candidateBuy = bid;
+  }
+
+  let candidateSell = hasMeaningfulSpread
+    ? Math.max(ask - safeTick, bid + safeTick)
+    : ask;
+  if (!Number.isFinite(candidateSell) || candidateSell <= 0) {
+    candidateSell = ask;
+  }
+  if (candidateSell > ask) {
+    candidateSell = ask;
+  }
 
   const boundedBuy = Math.max(0, candidateBuy);
   const boundedSell = Math.max(0, candidateSell);

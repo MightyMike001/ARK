@@ -81,7 +81,12 @@ const resolveLimitAdvice = (item = {}) => {
     ? item.notionalEur
     : DEFAULT_LIMIT_NOTIONAL_EUR;
 
-  let candidateBuy = Math.min(bid + tick, ask - tick);
+  const spread = ask - bid;
+  const hasMeaningfulSpread = Number.isFinite(spread) && spread > tick;
+
+  let candidateBuy = hasMeaningfulSpread
+    ? Math.min(bid + tick, ask - tick)
+    : bid;
   if (!Number.isFinite(candidateBuy) || candidateBuy <= 0) {
     candidateBuy = bid;
   }
@@ -89,7 +94,9 @@ const resolveLimitAdvice = (item = {}) => {
     candidateBuy = bid;
   }
 
-  let candidateSell = Math.max(ask - tick, bid + tick);
+  let candidateSell = hasMeaningfulSpread
+    ? Math.max(ask - tick, bid + tick)
+    : ask;
   if (!Number.isFinite(candidateSell) || candidateSell <= 0) {
     candidateSell = ask;
   }
