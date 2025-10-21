@@ -81,14 +81,24 @@
 
     .filters-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       gap: 12px;
     }
 
-    label {
+    .filter-control {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.3);
+    }
+
+    .filter-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       font-size: 12px;
       text-transform: uppercase;
       letter-spacing: 0.1em;
@@ -102,6 +112,46 @@
       border-radius: 12px;
       padding: 10px 12px;
       font: inherit;
+    }
+
+    input[type='number']:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .toggle-input {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 42px;
+      height: 24px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      position: relative;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+
+    .toggle-input::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    .toggle-input:checked {
+      background: rgba(34, 197, 94, 0.2);
+      border-color: rgba(34, 197, 94, 0.5);
+    }
+
+    .toggle-input:checked::after {
+      transform: translateX(18px);
+      background: var(--accent);
     }
 
     table {
@@ -174,18 +224,60 @@
         <div class="filters">
           <h2 style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Filters</h2>
           <div class="filters-grid">
-            <label>
-              Min Spread %
-              <input type="number" step="0.1" min="0" data-filter="minSpread" placeholder="0" />
-            </label>
-            <label>
-              Min VolSurge
-              <input type="number" step="0.1" min="0" data-filter="minVolSurge" placeholder="0" />
-            </label>
-            <label>
-              Min Vol (€)
-              <input type="number" step="1000" min="0" data-filter="minVolEur" placeholder="100000" />
-            </label>
+            <div class="filter-control">
+              <div class="filter-header">
+                <span>Min Spread %</span>
+                <input
+                  type="checkbox"
+                  class="toggle-input"
+                  data-toggle="minSpread"
+                  aria-label="Minimale spread filter aan/uit"
+                />
+              </div>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                data-filter="minSpread"
+                placeholder="0.8"
+              />
+            </div>
+            <div class="filter-control">
+              <div class="filter-header">
+                <span>Min VolSurge</span>
+                <input
+                  type="checkbox"
+                  class="toggle-input"
+                  data-toggle="minVolSurge"
+                  aria-label="Minimale volume surge filter aan/uit"
+                />
+              </div>
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                data-filter="minVolSurge"
+                placeholder="1.5"
+              />
+            </div>
+            <div class="filter-control">
+              <div class="filter-header">
+                <span>Min 24h Vol (€)</span>
+                <input
+                  type="checkbox"
+                  class="toggle-input"
+                  data-toggle="min24hVolEur"
+                  aria-label="Minimale 24u volume filter aan/uit"
+                />
+              </div>
+              <input
+                type="number"
+                step="1000"
+                min="0"
+                data-filter="min24hVolEur"
+                placeholder="15000"
+              />
+            </div>
           </div>
         </div>
       </div>
