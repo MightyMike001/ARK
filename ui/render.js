@@ -50,12 +50,29 @@ const renderEmptyState = (tableBody, updatedAtLabel) => {
   }
 };
 
+const renderErrorState = (tableBody, updatedAtLabel, message) => {
+  const text = typeof message === 'string' && message.trim()
+    ? message.trim()
+    : 'data unavailable';
+  if (tableBody) {
+    tableBody.innerHTML = `<tr><td colspan="9">${text}</td></tr>`;
+  }
+  if (updatedAtLabel) {
+    updatedAtLabel.textContent = '–';
+  }
+};
+
 export const renderTopSpreads = (list = [], {
   tableBody,
   updatedAtLabel,
   config,
+  errorMessage,
 } = {}) => {
   if (!tableBody) return;
+  if (errorMessage) {
+    renderErrorState(tableBody, updatedAtLabel, errorMessage);
+    return;
+  }
   const filtered = applyFilters(list, config);
 
   if (!filtered.length) {
