@@ -2,6 +2,7 @@ import { buildScoredList, summarizeMetrics, computeVolatilityIndicators } from '
 import { seedTopSpreads } from './seed.js';
 
 const BITVAVO_BASE_URL = 'https://api.bitvavo.com/v2';
+const BITVAVO_CORS_PROXY = 'https://corsproxy.io/?';
 export const DEFAULT_MARKET = 'ARK-EUR';
 
 const MARKET_ID_PATTERN = /^[A-Z0-9-]+$/;
@@ -165,20 +166,72 @@ const wait = (ms) => new Promise((resolve) => {
   setTimeout(resolve, ms);
 });
 
-const rawFetchJson = async (url, attempt = 0) => {
-  const res = await fetch(url, { cache: 'no-store' });
+const buildProxiedUrl = (url) => {
+  const trimmed = typeof url === 'string' ? url.trim() : '';
+  if (!trimmed) return trimmed;
+  const encoded = encodeURI(trimmed);
+  return `${BITVAVO_CORS_PROXY}${encoded}`;
+};
+
+const isLikelyNetworkError = (error) => {
+  if (!error) return false;
+  if (error.name === 'TypeError') return true;
+  const message = (error.message || '').toLowerCase();
+  return message.includes('failed to fetch')
+    || message.includes('network request failed')
+    || message.includes('load failed')
+    || message.includes('networkerror');
+};
+
+const performFetch = async (url, { proxied = false } = {}) => {
+  const targetUrl = proxied ? buildProxiedUrl(url) : url;
+  if (!targetUrl) {
+    throw new Error('Lege URL');
+  }
+  const res = await fetch(targetUrl, {
+    cache: 'no-store',
+    mode: 'cors',
+    referrerPolicy: 'no-referrer',
+  });
   if (!res.ok) {
     const status = res.status;
     const shouldRetry = status === 429 || (status >= 500 && status < 600);
-    if (shouldRetry && attempt < MAX_FETCH_RETRIES) {
-      await wait(RETRY_DELAY_MS);
-      return rawFetchJson(url, attempt + 1);
-    }
-    const error = new Error(`HTTP ${status}`);
-    error.status = status;
-    throw error;
+    return {
+      ok: false,
+      status,
+      shouldRetry,
+      payload: shouldRetry ? null : await res.text().catch(() => null),
+    };
   }
-  return res.json();
+  const data = await res.json();
+  return { ok: true, status: res.status, payload: data };
+};
+
+const rawFetchJson = async (url, attempt = 0, { proxied = false } = {}) => {
+  try {
+    const response = await performFetch(url, { proxied });
+    if (!response.ok) {
+      const { status, shouldRetry, payload } = response;
+      if (shouldRetry && attempt < MAX_FETCH_RETRIES) {
+        await wait(RETRY_DELAY_MS);
+        return rawFetchJson(url, attempt + 1, { proxied });
+      }
+      const error = new Error(`HTTP ${status}`);
+      error.status = status;
+      error.payload = payload;
+      throw error;
+    }
+    return response.payload;
+  } catch (err) {
+    if (!proxied && isLikelyNetworkError(err)) {
+      return rawFetchJson(url, attempt, { proxied: true });
+    }
+    if (attempt < MAX_FETCH_RETRIES) {
+      await wait(RETRY_DELAY_MS);
+      return rawFetchJson(url, attempt + 1, { proxied });
+    }
+    throw err;
+  }
 };
 
 const fetchJson = (url) => enqueueNetworkTask(() => rawFetchJson(url));
