@@ -189,9 +189,19 @@ function renderTopSpreads(rawList = []) {
         ? `€${formatNumber(item.volumeEur, 0)}`
         : '–';
       const lastPrice = formatPrice(item.last, 5);
-      const spikeBadge = item.spike ? ' ⚡' : '';
+      const highlightClasses = [];
+      if (item.spike) {
+        highlightClasses.push('row-spike');
+      }
+      if (Number.isFinite(item.spreadPct) && Number.isFinite(item.volumeSurge)) {
+        if (item.spreadPct > 3 && item.volumeSurge > 2) {
+          highlightClasses.push('row-opportunity');
+        }
+      }
+      const className = highlightClasses.join(' ');
+      const spikeBadge = item.spike ? '<span class="spike-indicator">⚡ Spike</span>' : '';
       return `
-        <tr data-market="${market}" class="${item.spike ? 'has-spike' : ''}">
+        <tr data-market="${market}" class="${className}">
           <td class="numeric">${rank}</td>
           <td>${market}</td>
           <td class="numeric">${totalScore}${spikeBadge}</td>
