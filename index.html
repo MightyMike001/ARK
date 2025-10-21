@@ -403,10 +403,12 @@
     let dataFeed = null;
     let unsubscribeFeed = null;
 
-    const cloneDefaults = () => ({
-      thresholds: { ...DEFAULT_THRESHOLDS },
-      enabled: { ...DEFAULT_ENABLED },
-    });
+    function cloneDefaults() {
+      return {
+        thresholds: { ...DEFAULT_THRESHOLDS },
+        enabled: { ...DEFAULT_ENABLED },
+      };
+    }
 
     function toSafeNumber(value, fallback = 0) {
       const parsed = Number.parseFloat(value);
