@@ -165,7 +165,7 @@
 
     table {
       width: 100%;
-      min-width: 1100px;
+      min-width: 780px;
       border-collapse: collapse;
       font-size: 14px;
       table-layout: fixed;
@@ -381,19 +381,14 @@
               <th>Pair</th>
               <th>Score</th>
               <th>Spread%</th>
-              <th>Spread€</th>
-              <th>VolSurge</th>
-              <th>15m Range%</th>
-              <th>Wick</th>
               <th>24h Vol</th>
-              <th>Laatste prijs</th>
               <th>Limit koop (€1000)</th>
               <th>Limit verkoop (€1000)</th>
             </tr>
           </thead>
           <tbody data-top-spreads>
             <tr>
-              <td colspan="12">Laden…</td>
+              <td colspan="7">Laden…</td>
             </tr>
           </tbody>
         </table>
@@ -404,7 +399,8 @@
     import { createTopSpreadPoller } from './data/bitvavo.js';
     import { renderTopSpreads } from './ui/render.js';
 
-    const UI_UPDATE_DEBOUNCE_MS = 300;
+    const UI_UPDATE_DEBOUNCE_MS = 150;
+    const TOP_SPREAD_LIMIT = 30;
     const STORAGE_KEY = 'arkScannerCfg';
     const LEGACY_STORAGE_KEY = 'topSpreadFilters';
     const DEFAULT_THRESHOLDS = {
@@ -579,14 +575,14 @@
       const minVolume = getActiveMinVolumeThreshold();
       if (!dataFeed) {
         dataFeed = createTopSpreadPoller({
-          limit: 50,
+          limit: TOP_SPREAD_LIMIT,
           minVolumeEur: minVolume,
         });
         unsubscribeFeed = dataFeed.subscribe(handleDataUpdate);
         return;
       }
       dataFeed.updateOptions({
-        limit: 50,
+        limit: TOP_SPREAD_LIMIT,
         minVolumeEur: minVolume,
       });
     }
