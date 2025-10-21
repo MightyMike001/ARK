@@ -7,6 +7,7 @@ const STABLE_ASSETS = new Set(['USDT', 'USDC', 'EURS']);
 const REQUEST_SPACING_MS = 200;
 const POLL_INTERVAL_TICKER_MS = 30000;
 const POLL_INTERVAL_CANDLES_MS = 60000;
+const LOG_INTERVAL_MS = 60000;
 const CANDLE_CACHE_TTL_MS = 60000;
 
 const requestQueue = [];
@@ -725,6 +726,12 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     candles: new Map(),
     lastResult: [],
     topMarkets: [],
+    metrics: {
+      scannedCount: 0,
+      averageSpread: NaN,
+      spikeCount: 0,
+      topFive: [],
+    },
   };
 
   const options = {
@@ -735,6 +742,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
   let active = true;
   let tickerTimer = null;
   let candleTimer = null;
+  let logTimer = null;
   let recomputeInFlight = false;
   let recomputeQueued = false;
   let recomputeQueuedForce = false;
@@ -911,6 +919,65 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       });
   };
 
+  const updateMetrics = (baseCandidates, finalList) => {
+    const spreads = (baseCandidates || [])
+      .map((item) => (Number.isFinite(item?.spreadPct) ? item.spreadPct : NaN))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const averageSpread = spreads.length
+      ? spreads.reduce((sum, value) => sum + value, 0) / spreads.length
+      : NaN;
+
+    const topFive = (finalList || [])
+      .slice(0, 5)
+      .map((item) => ({
+        market: item.market,
+        totalScore: item.totalScore,
+        spreadPct: item.spreadPct,
+        volumeEur: item.volumeEur,
+        spike: Boolean(item.spike),
+      }));
+
+    state.metrics = {
+      scannedCount: Array.isArray(baseCandidates) ? baseCandidates.length : 0,
+      averageSpread,
+      spikeCount: Array.isArray(finalList)
+        ? finalList.filter((item) => item?.spike).length
+        : 0,
+      topFive,
+    };
+  };
+
+  const logMetrics = () => {
+    const {
+      scannedCount,
+      averageSpread,
+      spikeCount,
+      topFive,
+    } = state.metrics;
+
+    const formattedSpread = Number.isFinite(averageSpread)
+      ? `${averageSpread.toFixed(2)}%`
+      : '–';
+
+    console.log('[TopSpread] Statistieken - markten gescand:', scannedCount,
+      '| gemiddelde spread:', formattedSpread,
+      '| spikes gedetecteerd:', spikeCount,
+      '| tijdstip:', new Date().toISOString());
+
+    if (topFive.length) {
+      const table = topFive.map((item) => ({
+        Markt: item.market,
+        Score: Number.isFinite(item.totalScore) ? item.totalScore.toFixed(2) : '–',
+        Spread: Number.isFinite(item.spreadPct) ? `${item.spreadPct.toFixed(2)}%` : '–',
+        VolumeEur: Number.isFinite(item.volumeEur) ? Math.round(item.volumeEur) : '–',
+        Spike: item.spike ? 'Ja' : 'Nee',
+      }));
+      console.table(table);
+    } else {
+      console.log('[TopSpread] Geen topmunten beschikbaar');
+    }
+  };
+
   const recompute = async (forceCandles = false) => {
     if (!active) return;
     if (recomputeInFlight) {
@@ -925,6 +992,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       if (!baseCandidates.length) {
         state.lastResult = [];
         state.topMarkets = [];
+        updateMetrics(baseCandidates, []);
         emit();
         return;
       }
@@ -936,6 +1004,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
 
       state.lastResult = finalList;
       state.topMarkets = finalList.map((item) => item.market);
+      updateMetrics(baseCandidates, finalList);
       emit();
     } catch (err) {
       console.warn('Fout bij herberekenen top spreads', err);
@@ -1020,6 +1089,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     active = false;
     if (tickerTimer) clearInterval(tickerTimer);
     if (candleTimer) clearInterval(candleTimer);
+    if (logTimer) clearInterval(logTimer);
     listeners.clear();
   };
 
@@ -1037,6 +1107,14 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
         console.warn('Kon periodieke candle-update niet uitvoeren', err);
       });
     }, POLL_INTERVAL_CANDLES_MS);
+    logTimer = setInterval(() => {
+      try {
+        logMetrics();
+      } catch (err) {
+        console.warn('Kon logstatistieken niet schrijven', err);
+      }
+    }, LOG_INTERVAL_MS);
+    logMetrics();
   };
 
   start();
