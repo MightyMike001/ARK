@@ -1,6 +1,6 @@
-import { fetchTopSpreadMarkets } from './data.js';
+import { createTopSpreadPoller } from './data.js';
 
-const REFRESH_INTERVAL_MS = 60000;
+const UI_UPDATE_DEBOUNCE_MS = 300;
 const STORAGE_KEY = 'arkScannerCfg';
 const LEGACY_STORAGE_KEY = 'topSpreadFilters';
 const DEFAULT_THRESHOLDS = {
@@ -29,9 +29,11 @@ const els = {
   },
 };
 
-let refreshTimer = null;
+let renderTimer = null;
 let lastFetched = [];
 let activeConfig = loadConfig();
+let dataFeed = null;
+let unsubscribeFeed = null;
 
 const cloneDefaults = () => ({
   thresholds: { ...DEFAULT_THRESHOLDS },
@@ -211,21 +213,52 @@ function renderTopSpreads(rawList = []) {
   }
 }
 
-async function refreshTopSpreads() {
-  try {
-    const { thresholds, enabled } = activeConfig;
-    const list = await fetchTopSpreadMarkets({
-      limit: 50,
-      minVolumeEur: enabled.min24hVolEur && Number.isFinite(thresholds.min24hVolEur)
-        ? thresholds.min24hVolEur
-        : 0,
-    });
-    lastFetched = Array.isArray(list) ? list : [];
+function scheduleRender() {
+  if (renderTimer) {
+    clearTimeout(renderTimer);
+  }
+  renderTimer = setTimeout(() => {
+    renderTimer = null;
     renderTopSpreads(lastFetched);
-  } catch (err) {
-    console.warn('Kon top spreads niet verversen', err);
-    lastFetched = [];
-    renderTopSpreads([]);
+  }, UI_UPDATE_DEBOUNCE_MS);
+}
+
+function handleDataUpdate(list) {
+  lastFetched = Array.isArray(list) ? list : [];
+  scheduleRender();
+}
+
+function getActiveMinVolumeThreshold() {
+  const { thresholds, enabled } = activeConfig;
+  if (!enabled.min24hVolEur) return 0;
+  const value = thresholds.min24hVolEur;
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function ensureDataFeed() {
+  const minVolume = getActiveMinVolumeThreshold();
+  if (!dataFeed) {
+    dataFeed = createTopSpreadPoller({
+      limit: 50,
+      minVolumeEur: minVolume,
+    });
+    unsubscribeFeed = dataFeed.subscribe(handleDataUpdate);
+    return;
+  }
+  dataFeed.updateOptions({
+    limit: 50,
+    minVolumeEur: minVolume,
+  });
+}
+
+function stopDataFeed() {
+  if (typeof unsubscribeFeed === 'function') {
+    unsubscribeFeed();
+    unsubscribeFeed = null;
+  }
+  if (dataFeed) {
+    dataFeed.stop?.();
+    dataFeed = null;
   }
 }
 
@@ -238,8 +271,8 @@ function handleThresholdChange(key, value) {
   };
   saveConfig();
   applyConfigToInputs();
-  renderTopSpreads(lastFetched);
-  refreshTopSpreads();
+  ensureDataFeed();
+  scheduleRender();
 }
 
 function handleToggleChange(key, nextState) {
@@ -250,8 +283,8 @@ function handleToggleChange(key, nextState) {
   };
   saveConfig();
   applyConfigToInputs();
-  renderTopSpreads(lastFetched);
-  refreshTopSpreads();
+  ensureDataFeed();
+  scheduleRender();
 }
 
 function wireEvents() {
@@ -270,20 +303,17 @@ function wireEvents() {
   });
 }
 
-function startPolling() {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-  }
-  refreshTimer = setInterval(() => {
-    refreshTopSpreads();
-  }, REFRESH_INTERVAL_MS);
-  refreshTopSpreads();
-}
-
 function init() {
   applyConfigToInputs();
   wireEvents();
-  startPolling();
+  ensureDataFeed();
+  scheduleRender();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    stopDataFeed();
+  });
 }
 
 if (document.readyState === 'loading') {
