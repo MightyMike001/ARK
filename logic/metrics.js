@@ -72,11 +72,25 @@ export const computeVolatilityIndicators = ({ candles = {}, book = null } = {}) 
   const rangeMedian = median(rangeHistory);
   const wickiness = calculateWickiness(last);
 
-  const volumeHistory = historyWindow.map((candle) => (Number.isFinite(candle?.volume) ? candle.volume : NaN));
+  const volumeHistory = historyWindow
+    .map((candle) => (Number.isFinite(candle?.volume) ? candle.volume : NaN));
+  const positiveHistory = volumeHistory.filter((value) => Number.isFinite(value) && value > 0);
   const volumeMedian = median(volumeHistory);
-  const volumeSurge = Number.isFinite(last?.volume) && Number.isFinite(volumeMedian) && volumeMedian > 0
-    ? last.volume / volumeMedian
-    : NaN;
+  const positiveMedian = median(positiveHistory);
+  const lastVolume = Number.isFinite(last?.volume) ? last.volume : NaN;
+
+  let volumeSurge = NaN;
+  if (Number.isFinite(lastVolume)) {
+    if (Number.isFinite(volumeMedian) && volumeMedian > 0) {
+      volumeSurge = lastVolume / volumeMedian;
+    } else if (Number.isFinite(positiveMedian) && positiveMedian > 0) {
+      volumeSurge = lastVolume / positiveMedian;
+    } else if (lastVolume > 0) {
+      volumeSurge = lastVolume;
+    } else {
+      volumeSurge = 0;
+    }
+  }
 
   const spreadPct = calculateSpreadPct(book);
 
