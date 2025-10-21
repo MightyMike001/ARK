@@ -2,6 +2,36 @@ const BITVAVO_BASE_URL = 'https://api.bitvavo.com/v2';
 export const DEFAULT_MARKET = 'ARK-EUR';
 
 const MARKET_ID_PATTERN = /^[A-Z0-9-]+$/;
+const MAX_CONCURRENT_REQUESTS = 4;
+const STABLE_ASSETS = new Set(['USDT', 'USDC', 'EURS']);
+
+const createLimiter = (limit = MAX_CONCURRENT_REQUESTS) => {
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : MAX_CONCURRENT_REQUESTS;
+  let active = 0;
+  const queue = [];
+
+  const dequeue = () => {
+    if (active >= safeLimit) return;
+    const job = queue.shift();
+    if (!job) return;
+    active += 1;
+    const { task, resolve, reject } = job;
+    Promise.resolve()
+      .then(task)
+      .then(resolve, reject)
+      .finally(() => {
+        active -= 1;
+        dequeue();
+      });
+  };
+
+  return (task) => new Promise((resolve, reject) => {
+    queue.push({ task, resolve, reject });
+    dequeue();
+  });
+};
+
+const scheduleRequest = createLimiter(MAX_CONCURRENT_REQUESTS);
 
 export const normalizeMarketId = (market = DEFAULT_MARKET) => {
   if (market == null) return DEFAULT_MARKET;
@@ -34,6 +64,22 @@ const sanitizeDepth = (value) => {
 
 const isValidLevel = (price, amount) => price > 0 && amount > 0 && Number.isFinite(price) && Number.isFinite(amount);
 
+const splitMarketId = (marketId = '') => {
+  if (typeof marketId !== 'string') return { base: '', quote: '' };
+  const [baseRaw = '', quoteRaw = ''] = marketId.split('-');
+  return { base: baseRaw.toUpperCase(), quote: quoteRaw.toUpperCase() };
+};
+
+const isEurMarket = (marketId) => {
+  const { quote } = splitMarketId(marketId);
+  return quote === 'EUR';
+};
+
+const isStableMarket = (marketId) => {
+  const { base } = splitMarketId(marketId);
+  return STABLE_ASSETS.has(base);
+};
+
 const normalizeLevels = (rows, side) => {
   if (!Array.isArray(rows)) return [];
   const sorter = side === 'bids'
@@ -51,13 +97,40 @@ const normalizeLevels = (rows, side) => {
     .sort(sorter);
 };
 
-const fetchJson = async (url) => {
+const mapWithConcurrency = async (items, limit = MAX_CONCURRENT_REQUESTS, iteratee) => {
+  if (!Array.isArray(items) || !items.length) return [];
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), items.length) : 1;
+  const results = new Array(items.length);
+  let index = 0;
+
+  const worker = async () => {
+    while (true) {
+      if (index >= items.length) break;
+      const current = index;
+      index += 1;
+      try {
+        results[current] = await iteratee(items[current], current);
+      } catch (err) {
+        console.warn('Fout bij verwerken taak', err);
+        results[current] = null;
+      }
+    }
+  };
+
+  const workers = Array.from({ length: Math.max(1, safeLimit) }, worker);
+  await Promise.all(workers);
+  return results;
+};
+
+const rawFetchJson = async (url) => {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }
   return res.json();
 };
+
+const fetchJson = (url) => scheduleRequest(() => rawFetchJson(url));
 
 export async function fetchOrderBook(market = DEFAULT_MARKET, depth = 25) {
   const marketId = normalizeMarketId(market);
@@ -77,6 +150,49 @@ export async function fetchOrderBook(market = DEFAULT_MARKET, depth = 25) {
     bestAsk,
     timestamp: Date.now(),
   };
+}
+
+const normalizeMarketEntry = (item) => {
+  if (!item) return null;
+  const market = String(item.market || item.Market || '').toUpperCase();
+  if (!market || !market.includes('-')) return null;
+  const { base, quote } = splitMarketId(market);
+  const status = (item.status || item.state || '').toString().toLowerCase();
+  const trading = item.trading != null ? Boolean(item.trading) : status !== 'halted';
+  const tickSize = parseNumber(item.priceTickSize ?? item.tickSize ?? item.stepSize);
+  const minOrderInQuote = parseNumber(item.minQuoteAmount ?? item.minOrderInQuote);
+  const amountDecimals = parseNumber(item.amountDecimals ?? item.decimals ?? item.amountPrecision);
+  const priceDecimals = parseNumber(item.priceDecimals ?? item.decimalsPrice ?? item.pricePrecision);
+
+  return {
+    market,
+    base,
+    quote,
+    status: status || 'unknown',
+    trading,
+    tickSize: Number.isFinite(tickSize) && tickSize > 0 ? tickSize : NaN,
+    minOrderInQuote: Number.isFinite(minOrderInQuote) && minOrderInQuote >= 0 ? minOrderInQuote : NaN,
+    amountDecimals: Number.isFinite(amountDecimals) && amountDecimals >= 0 ? amountDecimals : NaN,
+    priceDecimals: Number.isFinite(priceDecimals) && priceDecimals >= 0 ? priceDecimals : NaN,
+  };
+};
+
+export async function fetchBitvavoMarkets({ includeStable = false } = {}) {
+  try {
+    const payload = await fetchJson(`${BITVAVO_BASE_URL}/markets`);
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.markets)
+        ? payload.markets
+        : [];
+    return list
+      .map((item) => normalizeMarketEntry(item))
+      .filter((item) => item && isEurMarket(item.market))
+      .filter((item) => includeStable || !isStableMarket(item.market));
+  } catch (err) {
+    console.warn('Kon markets niet ophalen', err);
+    return [];
+  }
 }
 
 const normalizeTickerPayload = (payload, marketId) => {
@@ -117,7 +233,40 @@ const normalizeTickerPayload = (payload, marketId) => {
   };
 };
 
-export async function fetchTicker24hStats(market = DEFAULT_MARKET) {
+export async function fetchBitvavoTickerBook(market = DEFAULT_MARKET) {
+  const marketId = normalizeMarketId(market);
+  const url = `${BITVAVO_BASE_URL}/ticker/book?market=${encodeURIComponent(marketId)}`;
+  try {
+    const payload = await fetchJson(url);
+    const bid = parseNumber(payload?.bid);
+    const ask = parseNumber(payload?.ask);
+    const bidSize = parseNumber(payload?.bidSize ?? payload?.sizeBid);
+    const askSize = parseNumber(payload?.askSize ?? payload?.sizeAsk);
+    const timestamp = parseNumber(payload?.timestamp) || Date.now();
+    const spreadAbs = Number.isFinite(ask) && Number.isFinite(bid) ? ask - bid : NaN;
+    const mid = Number.isFinite(ask) && Number.isFinite(bid) ? (ask + bid) / 2 : NaN;
+    const spreadPct = Number.isFinite(spreadAbs) && Number.isFinite(mid) && mid > 0
+      ? (spreadAbs / mid) * 100
+      : NaN;
+
+    return {
+      market: marketId,
+      bid: Number.isFinite(bid) && bid > 0 ? bid : NaN,
+      ask: Number.isFinite(ask) && ask > 0 ? ask : NaN,
+      bidSize: Number.isFinite(bidSize) && bidSize >= 0 ? bidSize : NaN,
+      askSize: Number.isFinite(askSize) && askSize >= 0 ? askSize : NaN,
+      spreadAbs: Number.isFinite(spreadAbs) ? spreadAbs : NaN,
+      spreadPct: Number.isFinite(spreadPct) ? spreadPct : NaN,
+      mid: Number.isFinite(mid) ? mid : NaN,
+      timestamp,
+    };
+  } catch (err) {
+    console.warn('Kon ticker book niet ophalen', err);
+    return null;
+  }
+}
+
+export async function fetchBitvavoTicker24h(market = DEFAULT_MARKET) {
   const marketId = normalizeMarketId(market);
   const url = `${BITVAVO_BASE_URL}/ticker/24h?market=${encodeURIComponent(marketId)}`;
   try {
@@ -136,6 +285,10 @@ export async function fetchTicker24hStats(market = DEFAULT_MARKET) {
   }
 }
 
+export async function fetchTicker24hStats(market = DEFAULT_MARKET) {
+  return fetchBitvavoTicker24h(market);
+}
+
 export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 } = {}) {
   const url = `${BITVAVO_BASE_URL}/ticker/24h`;
   try {
@@ -148,7 +301,8 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
 
     const normalized = list
       .map((item) => normalizeTickerPayload(item))
-      .filter((item) => item && typeof item.market === 'string' && item.market.endsWith('-EUR'))
+      .filter((item) => item && typeof item.market === 'string' && isEurMarket(item.market))
+      .filter((item) => item && (item.market ? !isStableMarket(item.market) : true))
       .map((item) => {
         const spreadAbs = Number.isFinite(item.ask) && Number.isFinite(item.bid)
           ? item.ask - item.bid
@@ -179,6 +333,102 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
     console.warn('Kon top spreads niet ophalen', err);
     return [];
   }
+}
+
+const normalizeCandleRow = (row) => {
+  if (!Array.isArray(row) || row.length < 6) return null;
+  const [timestampRaw, openRaw, highRaw, lowRaw, closeRaw, volumeRaw] = row;
+  const timestamp = Number.parseInt(timestampRaw, 10);
+  const open = parseNumber(openRaw);
+  const high = parseNumber(highRaw);
+  const low = parseNumber(lowRaw);
+  const close = parseNumber(closeRaw);
+  const volume = parseNumber(volumeRaw);
+  if (!Number.isFinite(timestamp)) return null;
+  return {
+    timestamp,
+    open: Number.isFinite(open) ? open : NaN,
+    high: Number.isFinite(high) ? high : NaN,
+    low: Number.isFinite(low) ? low : NaN,
+    close: Number.isFinite(close) ? close : NaN,
+    volume: Number.isFinite(volume) ? volume : NaN,
+  };
+};
+
+const sanitizeCandleLimit = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 120;
+  return Math.min(1000, parsed);
+};
+
+export async function fetchBitvavoCandles(
+  market = DEFAULT_MARKET,
+  { intervals = ['1m', '15m'], limit = 120 } = {},
+) {
+  const marketId = normalizeMarketId(market);
+  const uniqueIntervals = Array.from(new Set((intervals || []).map((interval) => interval?.toString().trim()).filter(Boolean)));
+  const candles = {};
+
+  await Promise.all(uniqueIntervals.map(async (interval) => {
+    const safeInterval = interval;
+    const safeLimit = sanitizeCandleLimit(limit);
+    const url = `${BITVAVO_BASE_URL}/${encodeURIComponent(marketId)}/candles?interval=${encodeURIComponent(safeInterval)}&limit=${safeLimit}`;
+    try {
+      const payload = await fetchJson(url);
+      const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.candles)
+          ? payload.candles
+          : [];
+      candles[safeInterval] = rows.map((row) => normalizeCandleRow(row)).filter(Boolean);
+    } catch (err) {
+      console.warn(`Kon candles (${safeInterval}) niet ophalen`, err);
+      candles[safeInterval] = [];
+    }
+  }));
+
+  return { market: marketId, candles };
+}
+
+export async function fetchBitvavoMarketSnapshots({ includeCandles = true, candleLimit = 120 } = {}) {
+  const markets = await fetchBitvavoMarkets();
+  if (!markets.length) return [];
+
+  const results = await mapWithConcurrency(markets, MAX_CONCURRENT_REQUESTS, async (market) => {
+    if (!market?.market) return null;
+    try {
+      const [book, stats] = await Promise.all([
+        fetchBitvavoTickerBook(market.market),
+        fetchBitvavoTicker24h(market.market),
+      ]);
+
+      let candles = null;
+      if (includeCandles) {
+        const candlePayload = await fetchBitvavoCandles(market.market, {
+          intervals: ['1m', '15m'],
+          limit: candleLimit,
+        });
+        candles = candlePayload?.candles ?? {};
+      }
+
+      return {
+        ...market,
+        book,
+        stats,
+        candles,
+      };
+    } catch (err) {
+      console.warn(`Kon marktdata niet ophalen voor ${market.market}`, err);
+      return {
+        ...market,
+        book: null,
+        stats: null,
+        candles: includeCandles ? {} : null,
+      };
+    }
+  });
+
+  return results.filter(Boolean);
 }
 
 export async function fetchMarketSpecifications(market = DEFAULT_MARKET) {
