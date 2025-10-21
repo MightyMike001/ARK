@@ -4,6 +4,39 @@ export const DEFAULT_MARKET = 'ARK-EUR';
 const MARKET_ID_PATTERN = /^[A-Z0-9-]+$/;
 const MAX_CONCURRENT_REQUESTS = 4;
 const STABLE_ASSETS = new Set(['USDT', 'USDC', 'EURS']);
+const REQUEST_SPACING_MS = 200;
+const POLL_INTERVAL_TICKER_MS = 30000;
+const POLL_INTERVAL_CANDLES_MS = 60000;
+const CANDLE_CACHE_TTL_MS = 60000;
+
+const requestQueue = [];
+let requestQueueActive = false;
+
+const processRequestQueue = () => {
+  if (!requestQueue.length) {
+    requestQueueActive = false;
+    return;
+  }
+  const job = requestQueue.shift();
+  if (!job) {
+    requestQueueActive = false;
+    return;
+  }
+  const { task, resolve, reject } = job;
+  setTimeout(() => {
+    scheduleRequest(task)
+      .then(resolve, reject)
+      .finally(processRequestQueue);
+  }, REQUEST_SPACING_MS);
+};
+
+const enqueueNetworkTask = (task) => new Promise((resolve, reject) => {
+  requestQueue.push({ task, resolve, reject });
+  if (!requestQueueActive) {
+    requestQueueActive = true;
+    processRequestQueue();
+  }
+});
 
 const clamp = (value, min, max) => {
   if (!Number.isFinite(value)) return Number.isFinite(min) ? min : 0;
@@ -142,7 +175,7 @@ const rawFetchJson = async (url) => {
   return res.json();
 };
 
-const fetchJson = (url) => scheduleRequest(() => rawFetchJson(url));
+const fetchJson = (url) => enqueueNetworkTask(() => rawFetchJson(url));
 
 export async function fetchOrderBook(market = DEFAULT_MARKET, depth = 25) {
   const marketId = normalizeMarketId(market);
@@ -245,6 +278,37 @@ const normalizeTickerPayload = (payload, marketId) => {
   };
 };
 
+const normalizeTickerBookSnapshot = (payload, marketId) => {
+  if (!payload) return null;
+  const rawMarket = (payload.market || payload.Market || '').toUpperCase();
+  const resolvedMarket = marketId || rawMarket;
+  if (!resolvedMarket) return null;
+  if (marketId && rawMarket && rawMarket !== marketId) return null;
+
+  const bid = parseNumber(payload.bid ?? payload.bestBid);
+  const ask = parseNumber(payload.ask ?? payload.bestAsk);
+  const bidSize = parseNumber(payload.bidSize ?? payload.sizeBid);
+  const askSize = parseNumber(payload.askSize ?? payload.sizeAsk);
+  const timestamp = parseNumber(payload.timestamp ?? payload.time) || Date.now();
+  const spreadAbs = Number.isFinite(ask) && Number.isFinite(bid) ? ask - bid : NaN;
+  const mid = Number.isFinite(ask) && Number.isFinite(bid) ? (ask + bid) / 2 : NaN;
+  const spreadPct = Number.isFinite(spreadAbs) && Number.isFinite(mid) && mid > 0
+    ? (spreadAbs / mid) * 100
+    : NaN;
+
+  return {
+    market: resolvedMarket,
+    bid: Number.isFinite(bid) && bid > 0 ? bid : NaN,
+    ask: Number.isFinite(ask) && ask > 0 ? ask : NaN,
+    bidSize: Number.isFinite(bidSize) && bidSize >= 0 ? bidSize : NaN,
+    askSize: Number.isFinite(askSize) && askSize >= 0 ? askSize : NaN,
+    spreadAbs: Number.isFinite(spreadAbs) ? spreadAbs : NaN,
+    spreadPct: Number.isFinite(spreadPct) ? spreadPct : NaN,
+    mid: Number.isFinite(mid) ? mid : NaN,
+    timestamp,
+  };
+};
+
 export async function fetchBitvavoTickerBook(market = DEFAULT_MARKET) {
   const marketId = normalizeMarketId(market);
   const url = `${BITVAVO_BASE_URL}/ticker/book?market=${encodeURIComponent(marketId)}`;
@@ -300,6 +364,38 @@ export async function fetchBitvavoTicker24h(market = DEFAULT_MARKET) {
 export async function fetchTicker24hStats(market = DEFAULT_MARKET) {
   return fetchBitvavoTicker24h(market);
 }
+
+const fetchAllTickerBook = async () => {
+  const url = `${BITVAVO_BASE_URL}/ticker/book`;
+  try {
+    const payload = await fetchJson(url);
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.tickerBook)
+        ? payload.tickerBook
+        : [];
+    return list.map((item) => normalizeTickerBookSnapshot(item)).filter(Boolean);
+  } catch (err) {
+    console.warn('Kon ticker book snapshot niet ophalen', err);
+    return [];
+  }
+};
+
+const fetchAllTicker24h = async () => {
+  const url = `${BITVAVO_BASE_URL}/ticker/24h`;
+  try {
+    const payload = await fetchJson(url);
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.ticker24h)
+        ? payload.ticker24h
+        : [];
+    return list.map((item) => normalizeTickerPayload(item)).filter(Boolean);
+  } catch (err) {
+    console.warn('Kon ticker24h snapshot niet ophalen', err);
+    return [];
+  }
+};
 
 export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 } = {}) {
   const url = `${BITVAVO_BASE_URL}/ticker/24h`;
@@ -616,6 +712,340 @@ export async function fetchMarketSpecifications(market = DEFAULT_MARKET) {
     console.warn('Kon marktspecificaties niet ophalen', err);
     return null;
   }
+}
+
+export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 50;
+  const safeMinVolume = Number.isFinite(minVolumeEur) && minVolumeEur > 0 ? minVolumeEur : 0;
+
+  const listeners = new Set();
+  const state = {
+    book: new Map(),
+    stats: new Map(),
+    candles: new Map(),
+    lastResult: [],
+    topMarkets: [],
+  };
+
+  const options = {
+    limit: safeLimit,
+    minVolumeEur: safeMinVolume,
+  };
+
+  let active = true;
+  let tickerTimer = null;
+  let candleTimer = null;
+  let recomputeInFlight = false;
+  let recomputeQueued = false;
+  let recomputeQueuedForce = false;
+
+  const emit = () => {
+    const snapshot = state.lastResult.map((item) => ({ ...item }));
+    listeners.forEach((listener) => {
+      try {
+        listener(snapshot);
+      } catch (err) {
+        console.warn('Listener-fout in top spread poller', err);
+      }
+    });
+  };
+
+  const computeBaseCandidates = (minVolumeFilter = 0) => {
+    const minVolume = Number.isFinite(minVolumeFilter) && minVolumeFilter > 0 ? minVolumeFilter : 0;
+    const candidates = [];
+
+    state.stats.forEach((stats, market) => {
+      if (!stats) return;
+      if (!isEurMarket(market)) return;
+      if (isStableMarket(market)) return;
+
+      const book = state.book.get(market);
+      const bid = Number.isFinite(book?.bid) && book.bid > 0 ? book.bid : stats.bid;
+      const ask = Number.isFinite(book?.ask) && book.ask > 0 ? book.ask : stats.ask;
+      if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) {
+        return;
+      }
+
+      const spreadAbs = ask - bid;
+      const mid = (ask + bid) / 2;
+      const spreadPct = Number.isFinite(spreadAbs) && Number.isFinite(mid) && mid > 0
+        ? (spreadAbs / mid) * 100
+        : NaN;
+      if (!Number.isFinite(spreadPct) || spreadPct <= 0) {
+        return;
+      }
+
+      const volumeEur = Number.isFinite(stats.volumeQuote) ? stats.volumeQuote : NaN;
+      if (minVolume > 0 && (!Number.isFinite(volumeEur) || volumeEur < minVolume)) {
+        return;
+      }
+
+      candidates.push({
+        market,
+        bid,
+        ask,
+        bidSize: Number.isFinite(book?.bidSize) ? book.bidSize : NaN,
+        askSize: Number.isFinite(book?.askSize) ? book.askSize : NaN,
+        spreadAbs: Number.isFinite(spreadAbs) ? spreadAbs : NaN,
+        spreadPct: Number.isFinite(spreadPct) ? spreadPct : NaN,
+        mid: Number.isFinite(mid) ? mid : NaN,
+        last: stats.last,
+        volumeBase: stats.volumeBase,
+        volumeQuote: stats.volumeQuote,
+        volumeEur,
+        high: stats.high,
+        low: stats.low,
+        timestamp: stats.timestamp ?? Date.now(),
+      });
+    });
+
+    return candidates.sort((a, b) => b.spreadPct - a.spreadPct);
+  };
+
+  const ensureCandles = (market, force = false) => {
+    if (!market) return Promise.resolve({ '15m': [] });
+    const now = Date.now();
+    const current = state.candles.get(market) || null;
+    if (!force && current && !current.promise && now - current.timestamp < CANDLE_CACHE_TTL_MS) {
+      return Promise.resolve(current.data);
+    }
+    if (!force && current?.promise) {
+      return current.promise;
+    }
+    if (current?.promise) {
+      return current.promise;
+    }
+
+    const fetchPromise = fetchBitvavoCandles(market, { intervals: ['15m'], limit: 64 })
+      .then((payload) => {
+        const candles = payload?.candles ?? {};
+        const safeCandles = {
+          ...candles,
+          '15m': Array.isArray(candles?.['15m']) ? candles['15m'] : [],
+        };
+        state.candles.set(market, {
+          data: safeCandles,
+          timestamp: Date.now(),
+        });
+        return safeCandles;
+      })
+      .catch((err) => {
+        console.warn(`Kon candles niet ophalen voor ${market}`, err);
+        if (current?.data) {
+          state.candles.set(market, {
+            data: current.data,
+            timestamp: current.timestamp ?? 0,
+          });
+          return current.data;
+        }
+        const fallback = { '15m': [] };
+        state.candles.set(market, { data: fallback, timestamp: 0 });
+        return fallback;
+      });
+
+    state.candles.set(market, {
+      data: current?.data ?? { '15m': [] },
+      timestamp: current?.timestamp ?? 0,
+      promise: fetchPromise,
+    });
+
+    fetchPromise.finally(() => {
+      const entry = state.candles.get(market);
+      if (entry?.promise === fetchPromise) {
+        state.candles.set(market, {
+          data: entry.data ?? { '15m': [] },
+          timestamp: entry.timestamp ?? Date.now(),
+        });
+      }
+    });
+
+    return fetchPromise;
+  };
+
+  const refreshCandlesForMarkets = async (markets, force = false) => {
+    const unique = Array.from(new Set((markets || []).filter(Boolean)));
+    if (!unique.length) return;
+    await Promise.all(unique.map((market) => ensureCandles(market, force)));
+  };
+
+  const buildFinalList = (candidates) => {
+    const enriched = candidates.map((item) => {
+      const cache = state.candles.get(item.market);
+      const candles = cache?.data ?? { '15m': [] };
+      const safeCandles = {
+        ...candles,
+        '15m': Array.isArray(candles?.['15m']) ? candles['15m'] : [],
+      };
+      const volatility = computeVolatilityIndicators({ candles: safeCandles, book: { ask: item.ask, bid: item.bid } });
+
+      const volumeSurge = Number.isFinite(volatility.volumeSurge) ? volatility.volumeSurge : NaN;
+      const wickiness = Number.isFinite(volatility.wickiness) ? volatility.wickiness : NaN;
+      const range15mPct = Number.isFinite(volatility.range15mPct) ? volatility.range15mPct : NaN;
+      const spreadScore = clamp(Number.isFinite(item.spreadPct) ? item.spreadPct / 1.5 : NaN, 0, 1);
+      const volScore = clamp(volumeSurge / 3, 0, 1);
+      const wickScore = clamp(wickiness / 6, 0, 1);
+      const spikeBonus = volatility.spike ? 0.1 : 0;
+      const totalScoreRaw = 0.45 * spreadScore + 0.35 * volScore + 0.2 * wickScore + spikeBonus;
+      const totalScore = Number.isFinite(totalScoreRaw) ? totalScoreRaw : 0;
+
+      return {
+        ...item,
+        volumeSurge,
+        wickiness,
+        range15mPct,
+        spreadScore,
+        volScore,
+        wickScore,
+        spike: Boolean(volatility.spike),
+        totalScore,
+      };
+    });
+
+    return enriched
+      .filter((item) => Number.isFinite(item.spreadPct) && item.spreadPct > 0)
+      .sort((a, b) => {
+        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        if (b.spreadPct !== a.spreadPct) return b.spreadPct - a.spreadPct;
+        if (b.spreadAbs !== a.spreadAbs) return b.spreadAbs - a.spreadAbs;
+        return (b.volumeEur || 0) - (a.volumeEur || 0);
+      });
+  };
+
+  const recompute = async (forceCandles = false) => {
+    if (!active) return;
+    if (recomputeInFlight) {
+      recomputeQueued = true;
+      recomputeQueuedForce = recomputeQueuedForce || forceCandles;
+      return;
+    }
+
+    recomputeInFlight = true;
+    try {
+      const baseCandidates = computeBaseCandidates(options.minVolumeEur);
+      if (!baseCandidates.length) {
+        state.lastResult = [];
+        state.topMarkets = [];
+        emit();
+        return;
+      }
+
+      const candidateCount = Math.max(options.limit * 2, options.limit || 1);
+      const scopedCandidates = baseCandidates.slice(0, candidateCount);
+      await refreshCandlesForMarkets(scopedCandidates.map((item) => item.market), forceCandles);
+      const finalList = buildFinalList(scopedCandidates).slice(0, options.limit);
+
+      state.lastResult = finalList;
+      state.topMarkets = finalList.map((item) => item.market);
+      emit();
+    } catch (err) {
+      console.warn('Fout bij herberekenen top spreads', err);
+    } finally {
+      recomputeInFlight = false;
+      if (recomputeQueued) {
+        const nextForce = recomputeQueuedForce;
+        recomputeQueued = false;
+        recomputeQueuedForce = false;
+        recompute(nextForce);
+      }
+    }
+  };
+
+  const refreshTickerData = async (forceCandles = false) => {
+    if (!active) return;
+    try {
+      const [bookList, statsList] = await Promise.all([
+        fetchAllTickerBook(),
+        fetchAllTicker24h(),
+      ]);
+
+      if (bookList.length) {
+        state.book = new Map(bookList.map((item) => [item.market, item]));
+      }
+      if (statsList.length) {
+        state.stats = new Map(statsList.map((item) => [item.market, item]));
+      }
+    } catch (err) {
+      console.warn('Kon tickerdata niet verversen', err);
+    }
+
+    await recompute(forceCandles);
+  };
+
+  const subscribe = (listener) => {
+    if (typeof listener !== 'function') {
+      return () => {};
+    }
+    listeners.add(listener);
+    if (state.lastResult.length) {
+      const snapshot = state.lastResult.map((item) => ({ ...item }));
+      try {
+        listener(snapshot);
+      } catch (err) {
+        console.warn('Listener-fout in initiële callback', err);
+      }
+    }
+    return () => {
+      listeners.delete(listener);
+    };
+  };
+
+  const updateOptions = ({ limit: nextLimit, minVolumeEur: nextMinVolume } = {}) => {
+    if (!active) return;
+    let changed = false;
+
+    if (Number.isFinite(nextLimit) && nextLimit > 0) {
+      const normalized = Math.floor(nextLimit);
+      if (normalized !== options.limit) {
+        options.limit = normalized;
+        changed = true;
+      }
+    }
+
+    if (nextMinVolume != null) {
+      const parsed = Number.parseFloat(nextMinVolume);
+      const normalized = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+      if (normalized !== options.minVolumeEur) {
+        options.minVolumeEur = normalized;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      recompute(true);
+    }
+  };
+
+  const stop = () => {
+    if (!active) return;
+    active = false;
+    if (tickerTimer) clearInterval(tickerTimer);
+    if (candleTimer) clearInterval(candleTimer);
+    listeners.clear();
+  };
+
+  const start = () => {
+    refreshTickerData(true).catch((err) => {
+      console.warn('Kon initiële tickerdata niet laden', err);
+    });
+    tickerTimer = setInterval(() => {
+      refreshTickerData(false).catch((err) => {
+        console.warn('Kon periodieke tickerdata niet laden', err);
+      });
+    }, POLL_INTERVAL_TICKER_MS);
+    candleTimer = setInterval(() => {
+      recompute(true).catch((err) => {
+        console.warn('Kon periodieke candle-update niet uitvoeren', err);
+      });
+    }, POLL_INTERVAL_CANDLES_MS);
+  };
+
+  start();
+
+  return {
+    subscribe,
+    updateOptions,
+    stop,
+  };
 }
 
 export function subscribeOrderBook({
