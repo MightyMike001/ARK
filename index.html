@@ -72,6 +72,120 @@
       border-radius: 12px;
     }
 
+    .mobile-market-list {
+      display: none;
+      gap: 16px;
+    }
+
+    .mobile-market-card {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.55);
+      padding: 18px 20px;
+    }
+
+    .mobile-market-card.is-opportunity {
+      background: linear-gradient(135deg, rgba(253, 224, 71, 0.18), rgba(253, 224, 71, 0.04));
+      box-shadow: inset 2px 0 0 rgba(250, 204, 21, 0.6);
+    }
+
+    .mobile-market-card.is-spike {
+      box-shadow:
+        inset 0 0 0 1px rgba(248, 113, 113, 0.4),
+        inset 4px 0 0 rgba(248, 113, 113, 0.7);
+    }
+
+    .mobile-market-card__header {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .mobile-market-card__title {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .mobile-market-card__rank {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .mobile-market-card__pair {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .mobile-market-card__score {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+
+    .mobile-market-card__badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(248, 113, 113, 0.22);
+      color: #facc15;
+    }
+
+    .mobile-market-card__metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .mobile-market-card__metrics dt {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 0 0 4px;
+    }
+
+    .mobile-market-card__metrics dd {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 15px;
+    }
+
+    .mobile-market-card__actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .mobile-placeholder {
+      padding: 20px;
+      text-align: center;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.4);
+      color: var(--muted);
+      font-size: 14px;
+      letter-spacing: 0.02em;
+    }
+
     .table-meta {
       display: flex;
       flex-direction: column;
@@ -348,12 +462,40 @@
         padding: 20px clamp(16px, 5vw, 24px);
       }
 
+      .table-wrapper {
+        display: none;
+      }
+
+      .mobile-market-list {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .mobile-market-card {
+        padding: 18px 16px;
+      }
+
+      .filters-grid {
+        grid-template-columns: 1fr;
+      }
+
       table {
         font-size: 13px;
       }
 
       thead th {
         font-size: 11px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .mobile-market-card__header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .mobile-market-card__metrics {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -384,6 +526,9 @@
             </tr>
           </tbody>
         </table>
+      </div>
+      <div class="mobile-market-list" data-top-spreads-mobile>
+        <div class="mobile-placeholder">Laden…</div>
       </div>
       <div class="filters">
         <h2 style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em;">Filters</h2>
@@ -468,6 +613,7 @@
     const els = {
       topSpreadsBody: document.querySelector('[data-top-spreads]'),
       topSpreadsUpdated: document.querySelector('[data-top-spreads-updated]'),
+      topSpreadsMobile: document.querySelector('[data-top-spreads-mobile]'),
       filters: {
         minSpread: document.querySelector('[data-filter="minSpread"]'),
         minVolSurge: document.querySelector('[data-filter="minVolSurge"]'),
@@ -587,6 +733,7 @@
         renderTopSpreads(lastFetched, {
           tableBody: els.topSpreadsBody,
           updatedAtLabel: els.topSpreadsUpdated,
+          cardContainer: els.topSpreadsMobile,
           config: activeConfig,
           errorMessage: lastErrorMessage,
         });
