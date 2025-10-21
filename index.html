@@ -253,6 +253,23 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .limit-advice {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .limit-advice .price {
+      font-weight: 600;
+    }
+
+    .limit-advice .amount {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+    }
+
     @media (max-width: 720px) {
       body {
         padding: 24px 12px;
@@ -351,16 +368,19 @@
               <th>Pair</th>
               <th>Score</th>
               <th>Spread%</th>
+              <th>Spread€</th>
               <th>VolSurge</th>
               <th>15m Range%</th>
               <th>Wick</th>
               <th>24h Vol</th>
               <th>Laatste prijs</th>
+              <th>Limit koop (€1000)</th>
+              <th>Limit verkoop (€1000)</th>
             </tr>
           </thead>
           <tbody data-top-spreads>
             <tr>
-              <td colspan="9">Laden…</td>
+              <td colspan="12">Laden…</td>
             </tr>
           </tbody>
         </table>

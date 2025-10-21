@@ -1,4 +1,5 @@
 import { buildScoredList, summarizeMetrics, computeVolatilityIndicators } from '../logic/metrics.js';
+import { roundToTick } from '../calc.js';
 import { seedTopSpreads } from './seed.js';
 
 const BITVAVO_BASE_URL = 'https://api.bitvavo.com/v2';
@@ -15,6 +16,8 @@ const LOG_INTERVAL_MS = 60000;
 const CANDLE_CACHE_TTL_MS = 60000;
 const RETRY_DELAY_MS = 5000;
 const MAX_FETCH_RETRIES = 3;
+const DEFAULT_LIMIT_NOTIONAL_EUR = 1000;
+const FALLBACK_TICK_SIZE = 0.0001;
 
 const requestQueue = [];
 let requestQueueActive = false;
@@ -165,6 +168,60 @@ const mapWithConcurrency = async (items, limit = MAX_CONCURRENT_REQUESTS, iterat
 const wait = (ms) => new Promise((resolve) => {
   setTimeout(resolve, ms);
 });
+
+const computeLimitAdvice = ({
+  bid,
+  ask,
+  tickSize,
+  notionalEur = DEFAULT_LIMIT_NOTIONAL_EUR,
+} = {}) => {
+  const safeNotional = Number.isFinite(notionalEur) && notionalEur > 0 ? notionalEur : NaN;
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || !Number.isFinite(safeNotional)) {
+    return {
+      buyPrice: NaN,
+      sellPrice: NaN,
+      buyAmount: NaN,
+      sellAmount: NaN,
+    };
+  }
+
+  const safeTick = Number.isFinite(tickSize) && tickSize > 0 ? tickSize : FALLBACK_TICK_SIZE;
+  const spread = ask - bid;
+  const hasMeaningfulSpread = Number.isFinite(spread) && spread > safeTick;
+
+  let candidateBuy = hasMeaningfulSpread
+    ? Math.min(bid + safeTick, ask - safeTick)
+    : bid;
+  if (!Number.isFinite(candidateBuy) || candidateBuy <= 0) {
+    candidateBuy = bid;
+  }
+  if (candidateBuy < bid) {
+    candidateBuy = bid;
+  }
+
+  let candidateSell = hasMeaningfulSpread
+    ? Math.max(ask - safeTick, bid + safeTick)
+    : ask;
+  if (!Number.isFinite(candidateSell) || candidateSell <= 0) {
+    candidateSell = ask;
+  }
+  if (candidateSell > ask) {
+    candidateSell = ask;
+  }
+
+  const buyPrice = roundToTick(Math.max(candidateBuy, safeTick), safeTick, 'down');
+  const sellPrice = roundToTick(Math.max(candidateSell, safeTick), safeTick, 'up');
+
+  const buyAmount = Number.isFinite(buyPrice) && buyPrice > 0 ? safeNotional / buyPrice : NaN;
+  const sellAmount = Number.isFinite(sellPrice) && sellPrice > 0 ? safeNotional / sellPrice : NaN;
+
+  return {
+    buyPrice: Number.isFinite(buyPrice) ? buyPrice : NaN,
+    sellPrice: Number.isFinite(sellPrice) ? sellPrice : NaN,
+    buyAmount: Number.isFinite(buyAmount) ? buyAmount : NaN,
+    sellAmount: Number.isFinite(sellAmount) ? sellAmount : NaN,
+  };
+};
 
 const buildProxiedUrl = (url) => {
   const trimmed = typeof url === 'string' ? url.trim() : '';
@@ -656,6 +713,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     book: new Map(),
     stats: new Map(),
     candles: new Map(),
+    specs: new Map(),
     lastResult: [],
     topMarkets: [],
     error: null,
@@ -727,6 +785,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     const entries = [];
     state.book.forEach((bookEntry, market) => {
       const statsEntry = state.stats.get(market);
+      const specEntry = state.specs.get(market);
       if (!bookEntry || !statsEntry) return;
       if (!Number.isFinite(bookEntry?.ask) || !Number.isFinite(bookEntry?.bid)) return;
       if (bookEntry.ask === 0 || bookEntry.bid === 0) return;
@@ -742,6 +801,12 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
         : Number.isFinite(bookEntry.mid)
           ? bookEntry.mid
           : NaN;
+      const limitAdvice = computeLimitAdvice({
+        bid: bookEntry.bid,
+        ask: bookEntry.ask,
+        tickSize: specEntry?.tickSize,
+      });
+      const { base, quote } = splitMarketId(market);
       entries.push({
         market,
         ask: bookEntry.ask,
@@ -750,6 +815,10 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
         spreadPct,
         last: lastPrice,
         volumeEur,
+        tickSize: Number.isFinite(specEntry?.tickSize) ? specEntry.tickSize : NaN,
+        base,
+        quote,
+        limitAdvice,
       });
     });
 
@@ -934,6 +1003,21 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     await recompute(forceCandles);
   };
 
+  const refreshMarketSpecs = async () => {
+    if (!active) return;
+    try {
+      const markets = await fetchBitvavoMarkets({ includeStable: true });
+      if (Array.isArray(markets) && markets.length) {
+        state.specs = new Map(markets.map((item) => [item.market, item]));
+        recompute(true).catch((err) => {
+          console.warn('Kon recompute niet uitvoeren na spec-update', err);
+        });
+      }
+    } catch (err) {
+      console.warn('Kon marktspecificaties niet verversen', err);
+    }
+  };
+
   const logMetrics = () => {
     const {
       scannedCount,
@@ -1017,6 +1101,9 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
   };
 
   const start = () => {
+    refreshMarketSpecs().catch((err) => {
+      console.warn('Kon initiële marktspecificaties niet laden', err);
+    });
     refreshTickerData(true).catch((err) => {
       console.warn('Kon initiële tickerdata niet laden', err);
     });
