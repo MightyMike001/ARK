@@ -67,6 +67,11 @@
       gap: 24px;
     }
 
+    .table-wrapper {
+      overflow-x: auto;
+      border-radius: 12px;
+    }
+
     .table-meta {
       display: flex;
       flex-direction: column;
@@ -160,8 +165,10 @@
 
     table {
       width: 100%;
+      min-width: 1100px;
       border-collapse: collapse;
       font-size: 14px;
+      table-layout: fixed;
     }
 
     thead th {
@@ -176,9 +183,15 @@
       white-space: nowrap;
     }
 
+    thead th,
+    tbody td {
+      white-space: nowrap;
+    }
+
     tbody td {
       padding: 12px 16px;
       border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+      vertical-align: top;
     }
 
     tbody tr:last-child td {

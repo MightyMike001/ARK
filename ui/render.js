@@ -1,4 +1,8 @@
+import { roundToTick } from '../calc.js';
+
 const COLUMN_COUNT = 12;
+const DEFAULT_LIMIT_NOTIONAL_EUR = 1000;
+const FALLBACK_TICK_SIZE = 0.0001;
 
 const formatNumber = (value, digits = 0) => {
   if (!Number.isFinite(value)) return '–';
@@ -54,6 +58,58 @@ const formatAmount = (value) => {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+};
+
+const resolveLimitAdvice = (item = {}) => {
+  const advice = item?.limitAdvice ?? {};
+  const hasCompleteAdvice = ['buyPrice', 'sellPrice', 'buyAmount', 'sellAmount']
+    .every((key) => Number.isFinite(advice[key]) && advice[key] > 0);
+  if (hasCompleteAdvice) {
+    return advice;
+  }
+
+  const bid = Number.isFinite(item?.bid) && item.bid > 0 ? item.bid : NaN;
+  const ask = Number.isFinite(item?.ask) && item.ask > 0 ? item.ask : NaN;
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid >= ask) {
+    return advice;
+  }
+
+  const tick = Number.isFinite(item?.tickSize) && item.tickSize > 0
+    ? item.tickSize
+    : FALLBACK_TICK_SIZE;
+  const notional = Number.isFinite(item?.notionalEur) && item.notionalEur > 0
+    ? item.notionalEur
+    : DEFAULT_LIMIT_NOTIONAL_EUR;
+
+  let candidateBuy = Math.min(bid + tick, ask - tick);
+  if (!Number.isFinite(candidateBuy) || candidateBuy <= 0) {
+    candidateBuy = bid;
+  }
+  if (candidateBuy < bid) {
+    candidateBuy = bid;
+  }
+
+  let candidateSell = Math.max(ask - tick, bid + tick);
+  if (!Number.isFinite(candidateSell) || candidateSell <= 0) {
+    candidateSell = ask;
+  }
+  if (candidateSell > ask) {
+    candidateSell = ask;
+  }
+
+  const buyPrice = roundToTick(Math.max(candidateBuy, tick), tick, 'down');
+  const sellPrice = roundToTick(Math.max(candidateSell, tick), tick, 'up');
+  const safeBuyPrice = Number.isFinite(buyPrice) && buyPrice > 0 ? buyPrice : bid;
+  const safeSellPrice = Number.isFinite(sellPrice) && sellPrice > 0 ? sellPrice : ask;
+  const buyAmount = Number.isFinite(safeBuyPrice) && safeBuyPrice > 0 ? notional / safeBuyPrice : NaN;
+  const sellAmount = Number.isFinite(safeSellPrice) && safeSellPrice > 0 ? notional / safeSellPrice : NaN;
+
+  return {
+    buyPrice: Number.isFinite(advice.buyPrice) && advice.buyPrice > 0 ? advice.buyPrice : safeBuyPrice,
+    sellPrice: Number.isFinite(advice.sellPrice) && advice.sellPrice > 0 ? advice.sellPrice : safeSellPrice,
+    buyAmount: Number.isFinite(advice.buyAmount) && advice.buyAmount > 0 ? advice.buyAmount : buyAmount,
+    sellAmount: Number.isFinite(advice.sellAmount) && advice.sellAmount > 0 ? advice.sellAmount : sellAmount,
+  };
 };
 
 const applyFilters = (list, config) => {
@@ -131,7 +187,7 @@ export const renderTopSpreads = (list = [], {
         : '–';
       const lastPrice = formatPrice(item.last, priceDigits);
       const baseAsset = (market.split('-')[0] || '').toUpperCase();
-      const limitAdvice = item.limitAdvice || {};
+      const limitAdvice = resolveLimitAdvice(item);
       const buyPrice = formatPrice(limitAdvice.buyPrice, priceDigits);
       const buyAmount = formatAmount(limitAdvice.buyAmount);
       const sellPrice = formatPrice(limitAdvice.sellPrice, priceDigits);
