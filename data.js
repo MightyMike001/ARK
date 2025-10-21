@@ -5,6 +5,18 @@ const MARKET_ID_PATTERN = /^[A-Z0-9-]+$/;
 const MAX_CONCURRENT_REQUESTS = 4;
 const STABLE_ASSETS = new Set(['USDT', 'USDC', 'EURS']);
 
+const clamp = (value, min, max) => {
+  if (!Number.isFinite(value)) return Number.isFinite(min) ? min : 0;
+  let next = value;
+  if (Number.isFinite(min) && next < min) {
+    next = min;
+  }
+  if (Number.isFinite(max) && next > max) {
+    next = max;
+  }
+  return next;
+};
+
 const createLimiter = (limit = MAX_CONCURRENT_REQUESTS) => {
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : MAX_CONCURRENT_REQUESTS;
   let active = 0;
@@ -323,7 +335,55 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
       })
       .filter((item) => item.spreadPct > 0 && item.volumeEur >= minVolumeEur);
 
-    const sorted = normalized.sort((a, b) => {
+    if (!normalized.length) {
+      return [];
+    }
+
+    const enriched = await mapWithConcurrency(normalized, MAX_CONCURRENT_REQUESTS, async (item) => {
+      let candles = {};
+      try {
+        const candlePayload = await fetchBitvavoCandles(item.market, {
+          intervals: ['15m'],
+          limit: 64,
+        });
+        candles = candlePayload?.candles ?? {};
+      } catch (err) {
+        console.warn(`Kon candles niet ophalen voor ${item.market}`, err);
+      }
+
+      const safeCandles = {
+        ...candles,
+        '15m': Array.isArray(candles?.['15m']) ? candles['15m'] : [],
+      };
+      const volatility = computeVolatilityIndicators({
+        candles: safeCandles,
+        book: { ask: item.ask, bid: item.bid },
+      });
+
+      const volumeSurge = Number.isFinite(volatility.volumeSurge) ? volatility.volumeSurge : NaN;
+      const wickiness = Number.isFinite(volatility.wickiness) ? volatility.wickiness : NaN;
+
+      const spreadScore = clamp(Number.isFinite(item.spreadPct) ? item.spreadPct / 1.5 : NaN, 0, 1);
+      const volScore = clamp(volumeSurge / 3, 0, 1);
+      const wickScore = clamp(wickiness / 6, 0, 1);
+      const spikeBonus = volatility.spike ? 0.1 : 0;
+      const totalScoreRaw = 0.45 * spreadScore + 0.35 * volScore + 0.2 * wickScore + spikeBonus;
+      const totalScore = Number.isFinite(totalScoreRaw) ? totalScoreRaw : 0;
+
+      return {
+        ...item,
+        volumeSurge,
+        wickiness,
+        spreadScore,
+        volScore,
+        wickScore,
+        spike: Boolean(volatility.spike),
+        totalScore,
+      };
+    });
+
+    const sorted = enriched.sort((a, b) => {
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
       if (b.spreadPct !== a.spreadPct) return b.spreadPct - a.spreadPct;
       if (b.spreadAbs !== a.spreadAbs) return b.spreadAbs - a.spreadAbs;
       return (b.volumeEur || 0) - (a.volumeEur || 0);

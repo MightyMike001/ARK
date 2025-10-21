@@ -36,6 +36,11 @@ function formatNumber(value, digits = 0) {
   });
 }
 
+function formatScore(value, digits = 2) {
+  if (!Number.isFinite(value)) return '–';
+  return value.toFixed(digits);
+}
+
 function recordTopSpreadsHistory(list = []) {
   if (!Array.isArray(list) || !list.length) return;
   const now = Date.now();
@@ -187,9 +192,14 @@ function updateTopSpreadsSelectionUI() {
     els.topSpreadsSelected.textContent = selected?.market || '–';
   }
   if (els.topSpreadsCurrent) {
-    els.topSpreadsCurrent.textContent = selected
-      ? `Spread: ${formatPercent(selected.spreadPct, 2)} • ${formatPrice(selected.spreadAbs, 6)}`
-      : 'Spread: –';
+    if (selected) {
+      const spreadText = `Spread: ${formatPercent(selected.spreadPct, 2)} • ${formatPrice(selected.spreadAbs, 6)}`;
+      const scoreText = `Score: ${formatScore(selected.totalScore, 2)}`;
+      const spikeText = selected.spike ? ' ⚡' : '';
+      els.topSpreadsCurrent.textContent = `${spreadText} • ${scoreText}${spikeText}`;
+    } else {
+      els.topSpreadsCurrent.textContent = 'Spread: –';
+    }
   }
 }
 
@@ -208,7 +218,7 @@ function renderTopSpreads(list = []) {
   lastTopSpreads = Array.isArray(list) ? list : [];
 
   if (lastTopSpreads.length === 0) {
-    els.topSpreadsBody.innerHTML = '<tr><td colspan="7">Geen data beschikbaar</td></tr>';
+    els.topSpreadsBody.innerHTML = '<tr><td colspan="11">Geen data beschikbaar</td></tr>';
     if (els.topSpreadsUpdated) {
       els.topSpreadsUpdated.textContent = '–';
     }
@@ -231,10 +241,19 @@ function renderTopSpreads(list = []) {
         : '–';
       const bid = formatPrice(item.bid, 5);
       const ask = formatPrice(item.ask, 5);
+      const totalScore = formatScore(item.totalScore, 2);
+      const spreadScore = formatScore(item.spreadScore, 2);
+      const volScore = formatScore(item.volScore, 2);
+      const wickScore = formatScore(item.wickScore, 2);
+      const totalDisplay = item.spike ? `${totalScore} ⚡` : totalScore;
       return `
         <tr data-market="${market}">
           <td class="rank">${rank}</td>
           <td>${market}</td>
+          <td>${totalDisplay}</td>
+          <td>${spreadScore}</td>
+          <td>${volScore}</td>
+          <td>${wickScore}</td>
           <td>${spreadPct}</td>
           <td>${spreadAbs}</td>
           <td>${volume}</td>
@@ -248,7 +267,12 @@ function renderTopSpreads(list = []) {
   els.topSpreadsBody.innerHTML = rows;
   if (els.topSpreadsSelect) {
     const options = lastTopSpreads
-      .map((item, index) => `<option value="${item.market}">${index + 1}. ${item.market}</option>`)
+      .map((item, index) => {
+        const base = `${index + 1}. ${item.market}`;
+        const score = Number.isFinite(item.totalScore) ? ` (${formatScore(item.totalScore, 2)})` : '';
+        const spike = item.spike ? ' ⚡' : '';
+        return `<option value="${item.market}">${base}${score}${spike}</option>`;
+      })
       .join('');
     els.topSpreadsSelect.innerHTML = options;
     els.topSpreadsSelect.disabled = false;
