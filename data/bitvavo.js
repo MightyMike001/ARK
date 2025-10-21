@@ -1,3 +1,5 @@
+import { buildScoredList, summarizeMetrics, computeVolatilityIndicators } from '../logic/metrics.js';
+
 const BITVAVO_BASE_URL = 'https://api.bitvavo.com/v2';
 export const DEFAULT_MARKET = 'ARK-EUR';
 
@@ -38,18 +40,6 @@ const enqueueNetworkTask = (task) => new Promise((resolve, reject) => {
     processRequestQueue();
   }
 });
-
-const clamp = (value, min, max) => {
-  if (!Number.isFinite(value)) return Number.isFinite(min) ? min : 0;
-  let next = value;
-  if (Number.isFinite(min) && next < min) {
-    next = min;
-  }
-  if (Number.isFinite(max) && next > max) {
-    next = max;
-  }
-  return next;
-};
 
 const createLimiter = (limit = MAX_CONCURRENT_REQUESTS) => {
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : MAX_CONCURRENT_REQUESTS;
@@ -440,56 +430,27 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
       let candles = {};
       try {
         const candlePayload = await fetchBitvavoCandles(item.market, {
-          intervals: ['15m'],
-          limit: 64,
+          intervals: ['1m', '15m'],
+          limit: 120,
         });
         candles = candlePayload?.candles ?? {};
       } catch (err) {
         console.warn(`Kon candles niet ophalen voor ${item.market}`, err);
       }
 
-      const safeCandles = {
-        ...candles,
-        '15m': Array.isArray(candles?.['15m']) ? candles['15m'] : [],
-      };
-      const volatility = computeVolatilityIndicators({
-        candles: safeCandles,
-        book: { ask: item.ask, bid: item.bid },
-      });
+      const scored = buildScoredList([
+        {
+          ...item,
+          volumeEur: Number.isFinite(item.volumeQuote) ? item.volumeQuote : NaN,
+        },
+      ], new Map([[item.market, candles]]));
 
-      const volumeSurge = Number.isFinite(volatility.volumeSurge) ? volatility.volumeSurge : NaN;
-      const wickiness = Number.isFinite(volatility.wickiness) ? volatility.wickiness : NaN;
-      const range15mPct = Number.isFinite(volatility.range15mPct) ? volatility.range15mPct : NaN;
-
-      const spreadScore = clamp(Number.isFinite(item.spreadPct) ? item.spreadPct / 1.5 : NaN, 0, 1);
-      const volScore = clamp(volumeSurge / 3, 0, 1);
-      const wickScore = clamp(wickiness / 6, 0, 1);
-      const spikeBonus = volatility.spike ? 0.1 : 0;
-      const totalScoreRaw = 0.45 * spreadScore + 0.35 * volScore + 0.2 * wickScore + spikeBonus;
-      const totalScore = Number.isFinite(totalScoreRaw) ? totalScoreRaw : 0;
-
-      return {
-        ...item,
-        volumeSurge,
-        wickiness,
-        range15mPct,
-        spreadScore,
-        volScore,
-        wickScore,
-        spike: Boolean(volatility.spike),
-        totalScore,
-      };
+      return scored[0] ?? null;
     });
 
-    const sorted = enriched.sort((a, b) => {
-      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-      if (b.spreadPct !== a.spreadPct) return b.spreadPct - a.spreadPct;
-      if (b.spreadAbs !== a.spreadAbs) return b.spreadAbs - a.spreadAbs;
-      return (b.volumeEur || 0) - (a.volumeEur || 0);
-    });
-    return sorted.slice(0, limit);
+    return enriched.filter(Boolean).slice(0, limit);
   } catch (err) {
-    console.warn('Kon top spreads niet ophalen', err);
+    console.warn('Kon top spread markten niet ophalen', err);
     return [];
   }
 }
@@ -497,13 +458,15 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
 const normalizeCandleRow = (row) => {
   if (!Array.isArray(row) || row.length < 6) return null;
   const [timestampRaw, openRaw, highRaw, lowRaw, closeRaw, volumeRaw] = row;
-  const timestamp = Number.parseInt(timestampRaw, 10);
+  const timestamp = parseNumber(timestampRaw);
   const open = parseNumber(openRaw);
   const high = parseNumber(highRaw);
   const low = parseNumber(lowRaw);
   const close = parseNumber(closeRaw);
   const volume = parseNumber(volumeRaw);
-  if (!Number.isFinite(timestamp)) return null;
+
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+
   return {
     timestamp,
     open: Number.isFinite(open) ? open : NaN,
@@ -518,95 +481,6 @@ const sanitizeCandleLimit = (value) => {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return 120;
   return Math.min(1000, parsed);
-};
-
-const median = (values) => {
-  if (!Array.isArray(values) || !values.length) return NaN;
-  const filtered = values.filter((value) => Number.isFinite(value));
-  if (!filtered.length) return NaN;
-  const sorted = filtered.slice().sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) {
-    return (sorted[middle - 1] + sorted[middle]) / 2;
-  }
-  return sorted[middle];
-};
-
-const calculateRangePct = (candle) => {
-  if (!candle) return NaN;
-  const { high, low, close } = candle;
-  if (!Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close) || close <= 0) {
-    return NaN;
-  }
-  return ((high - low) / close) * 100;
-};
-
-const calculateWickiness = (candle) => {
-  if (!candle) return NaN;
-  const {
-    high, low, open, close,
-  } = candle;
-  if (!Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(open) || !Number.isFinite(close)) {
-    return NaN;
-  }
-  const upper = Math.max(0, high - Math.max(open, close));
-  const lower = Math.max(0, Math.min(open, close) - low);
-  const body = Math.abs(close - open);
-  if (!Number.isFinite(body) || body === 0) {
-    return NaN;
-  }
-  return (upper + lower) / body;
-};
-
-const calculateSpreadPct = (book) => {
-  if (!book) return NaN;
-  const { ask, bid } = book;
-  if (!Number.isFinite(ask) || !Number.isFinite(bid) || ask <= 0 || bid <= 0) {
-    return NaN;
-  }
-  const mid = (ask + bid) / 2;
-  if (!Number.isFinite(mid) || mid <= 0) return NaN;
-  return ((ask - bid) / mid) * 100;
-};
-
-const computeVolatilityIndicators = ({ candles = {}, book = null } = {}) => {
-  const list15m = Array.isArray(candles['15m']) ? candles['15m'] : [];
-  const last = list15m[list15m.length - 1];
-  const previous = list15m[list15m.length - 2];
-  const historyWindow = list15m.length > 1
-    ? list15m.slice(Math.max(0, list15m.length - 21), list15m.length - 1)
-    : [];
-
-  const range15mPct = calculateRangePct(last);
-  const rangeHistory = historyWindow.map((candle) => calculateRangePct(candle)).filter((value) => Number.isFinite(value));
-  const rangeMedian = median(rangeHistory);
-  const wickiness = calculateWickiness(last);
-
-  const volumeHistory = historyWindow.map((candle) => (Number.isFinite(candle?.volume) ? candle.volume : NaN));
-  const volumeMedian = median(volumeHistory);
-  const volumeSurge = Number.isFinite(last?.volume) && Number.isFinite(volumeMedian) && volumeMedian > 0
-    ? last.volume / volumeMedian
-    : NaN;
-
-  const spreadPct = calculateSpreadPct(book);
-
-  const highSpike = Number.isFinite(last?.high) && Number.isFinite(previous?.high) && previous.high > 0
-    ? last.high > previous.high * 1.01
-    : false;
-
-  const rangeSpike = Number.isFinite(range15mPct) && Number.isFinite(rangeMedian) && rangeMedian > 0
-    ? range15mPct > rangeMedian * 1.5
-    : false;
-
-  const spike = Boolean(highSpike && rangeSpike);
-
-  return {
-    spreadPct: Number.isFinite(spreadPct) ? spreadPct : NaN,
-    range15mPct: Number.isFinite(range15mPct) ? range15mPct : NaN,
-    wickiness: Number.isFinite(wickiness) ? wickiness : NaN,
-    volumeSurge: Number.isFinite(volumeSurge) ? volumeSurge : NaN,
-    spike,
-  };
 };
 
 export async function fetchBitvavoCandles(
@@ -760,77 +634,56 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
 
   const computeBaseCandidates = (minVolumeFilter = 0) => {
     const minVolume = Number.isFinite(minVolumeFilter) && minVolumeFilter > 0 ? minVolumeFilter : 0;
-    const candidates = [];
-
-    state.stats.forEach((stats, market) => {
-      if (!stats) return;
-      if (!isEurMarket(market)) return;
-      if (isStableMarket(market)) return;
-
-      const book = state.book.get(market);
-      const bid = Number.isFinite(book?.bid) && book.bid > 0 ? book.bid : stats.bid;
-      const ask = Number.isFinite(book?.ask) && book.ask > 0 ? book.ask : stats.ask;
-      if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0) {
-        return;
-      }
-
-      const spreadAbs = ask - bid;
-      const mid = (ask + bid) / 2;
-      const spreadPct = Number.isFinite(spreadAbs) && Number.isFinite(mid) && mid > 0
-        ? (spreadAbs / mid) * 100
+    const entries = [];
+    state.book.forEach((bookEntry, market) => {
+      const statsEntry = state.stats.get(market);
+      if (!bookEntry || !statsEntry) return;
+      if (!Number.isFinite(bookEntry?.ask) || !Number.isFinite(bookEntry?.bid)) return;
+      const volumeEur = Number.isFinite(statsEntry.volumeQuote) ? statsEntry.volumeQuote : NaN;
+      if (minVolume > 0 && (!Number.isFinite(volumeEur) || volumeEur < minVolume)) return;
+      const spreadAbs = Number.isFinite(bookEntry.ask) && Number.isFinite(bookEntry.bid)
+        ? bookEntry.ask - bookEntry.bid
         : NaN;
-      if (!Number.isFinite(spreadPct) || spreadPct <= 0) {
-        return;
-      }
-
-      const volumeEur = Number.isFinite(stats.volumeQuote) ? stats.volumeQuote : NaN;
-      if (minVolume > 0 && (!Number.isFinite(volumeEur) || volumeEur < minVolume)) {
-        return;
-      }
-
-      candidates.push({
+      const spreadPct = Number.isFinite(bookEntry.spreadPct) ? bookEntry.spreadPct : NaN;
+      entries.push({
         market,
-        bid,
-        ask,
-        bidSize: Number.isFinite(book?.bidSize) ? book.bidSize : NaN,
-        askSize: Number.isFinite(book?.askSize) ? book.askSize : NaN,
-        spreadAbs: Number.isFinite(spreadAbs) ? spreadAbs : NaN,
-        spreadPct: Number.isFinite(spreadPct) ? spreadPct : NaN,
-        mid: Number.isFinite(mid) ? mid : NaN,
-        last: stats.last,
-        volumeBase: stats.volumeBase,
-        volumeQuote: stats.volumeQuote,
+        ask: bookEntry.ask,
+        bid: bookEntry.bid,
+        spreadAbs,
+        spreadPct,
+        last: statsEntry.last,
         volumeEur,
-        high: stats.high,
-        low: stats.low,
-        timestamp: stats.timestamp ?? Date.now(),
       });
     });
 
-    return candidates.sort((a, b) => b.spreadPct - a.spreadPct);
+    return entries
+      .filter((item) => Number.isFinite(item.spreadPct) && item.spreadPct > 0)
+      .sort((a, b) => {
+        if (b.spreadPct !== a.spreadPct) return b.spreadPct - a.spreadPct;
+        if (b.spreadAbs !== a.spreadAbs) return b.spreadAbs - a.spreadAbs;
+        return (b.volumeEur || 0) - (a.volumeEur || 0);
+      });
   };
 
-  const ensureCandles = (market, force = false) => {
-    if (!market) return Promise.resolve({ '15m': [] });
-    const now = Date.now();
-    const current = state.candles.get(market) || null;
-    if (!force && current && !current.promise && now - current.timestamp < CANDLE_CACHE_TTL_MS) {
-      return Promise.resolve(current.data);
+  const ensureCandles = async (market, force = false) => {
+    const current = state.candles.get(market);
+    const freshEnough = current && current.timestamp && !force
+      ? (Date.now() - current.timestamp) < CANDLE_CACHE_TTL_MS
+      : false;
+    if (freshEnough && current?.data) {
+      return current.data;
     }
-    if (!force && current?.promise) {
-      return current.promise;
-    }
-    if (current?.promise) {
+
+    if (current?.promise && !force) {
       return current.promise;
     }
 
-    const fetchPromise = fetchBitvavoCandles(market, { intervals: ['15m'], limit: 64 })
+    const fetchPromise = fetchBitvavoCandles(market, {
+      intervals: ['1m', '15m'],
+      limit: 120,
+    })
       .then((payload) => {
-        const candles = payload?.candles ?? {};
-        const safeCandles = {
-          ...candles,
-          '15m': Array.isArray(candles?.['15m']) ? candles['15m'] : [],
-        };
+        const safeCandles = payload?.candles ?? { '15m': [] };
         state.candles.set(market, {
           data: safeCandles,
           timestamp: Date.now(),
@@ -876,106 +729,14 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     await Promise.all(unique.map((market) => ensureCandles(market, force)));
   };
 
-  const buildFinalList = (candidates) => {
-    const enriched = candidates.map((item) => {
-      const cache = state.candles.get(item.market);
-      const candles = cache?.data ?? { '15m': [] };
-      const safeCandles = {
-        ...candles,
-        '15m': Array.isArray(candles?.['15m']) ? candles['15m'] : [],
-      };
-      const volatility = computeVolatilityIndicators({ candles: safeCandles, book: { ask: item.ask, bid: item.bid } });
-
-      const volumeSurge = Number.isFinite(volatility.volumeSurge) ? volatility.volumeSurge : NaN;
-      const wickiness = Number.isFinite(volatility.wickiness) ? volatility.wickiness : NaN;
-      const range15mPct = Number.isFinite(volatility.range15mPct) ? volatility.range15mPct : NaN;
-      const spreadScore = clamp(Number.isFinite(item.spreadPct) ? item.spreadPct / 1.5 : NaN, 0, 1);
-      const volScore = clamp(volumeSurge / 3, 0, 1);
-      const wickScore = clamp(wickiness / 6, 0, 1);
-      const spikeBonus = volatility.spike ? 0.1 : 0;
-      const totalScoreRaw = 0.45 * spreadScore + 0.35 * volScore + 0.2 * wickScore + spikeBonus;
-      const totalScore = Number.isFinite(totalScoreRaw) ? totalScoreRaw : 0;
-
-      return {
-        ...item,
-        volumeSurge,
-        wickiness,
-        range15mPct,
-        spreadScore,
-        volScore,
-        wickScore,
-        spike: Boolean(volatility.spike),
-        totalScore,
-      };
+  const collectCandlesMap = () => {
+    const candlesMap = new Map();
+    state.candles.forEach((entry, market) => {
+      if (entry?.data) {
+        candlesMap.set(market, entry.data);
+      }
     });
-
-    return enriched
-      .filter((item) => Number.isFinite(item.spreadPct) && item.spreadPct > 0)
-      .sort((a, b) => {
-        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-        if (b.spreadPct !== a.spreadPct) return b.spreadPct - a.spreadPct;
-        if (b.spreadAbs !== a.spreadAbs) return b.spreadAbs - a.spreadAbs;
-        return (b.volumeEur || 0) - (a.volumeEur || 0);
-      });
-  };
-
-  const updateMetrics = (baseCandidates, finalList) => {
-    const spreads = (baseCandidates || [])
-      .map((item) => (Number.isFinite(item?.spreadPct) ? item.spreadPct : NaN))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    const averageSpread = spreads.length
-      ? spreads.reduce((sum, value) => sum + value, 0) / spreads.length
-      : NaN;
-
-    const topFive = (finalList || [])
-      .slice(0, 5)
-      .map((item) => ({
-        market: item.market,
-        totalScore: item.totalScore,
-        spreadPct: item.spreadPct,
-        volumeEur: item.volumeEur,
-        spike: Boolean(item.spike),
-      }));
-
-    state.metrics = {
-      scannedCount: Array.isArray(baseCandidates) ? baseCandidates.length : 0,
-      averageSpread,
-      spikeCount: Array.isArray(finalList)
-        ? finalList.filter((item) => item?.spike).length
-        : 0,
-      topFive,
-    };
-  };
-
-  const logMetrics = () => {
-    const {
-      scannedCount,
-      averageSpread,
-      spikeCount,
-      topFive,
-    } = state.metrics;
-
-    const formattedSpread = Number.isFinite(averageSpread)
-      ? `${averageSpread.toFixed(2)}%`
-      : '–';
-
-    console.log('[TopSpread] Statistieken - markten gescand:', scannedCount,
-      '| gemiddelde spread:', formattedSpread,
-      '| spikes gedetecteerd:', spikeCount,
-      '| tijdstip:', new Date().toISOString());
-
-    if (topFive.length) {
-      const table = topFive.map((item) => ({
-        Markt: item.market,
-        Score: Number.isFinite(item.totalScore) ? item.totalScore.toFixed(2) : '–',
-        Spread: Number.isFinite(item.spreadPct) ? `${item.spreadPct.toFixed(2)}%` : '–',
-        VolumeEur: Number.isFinite(item.volumeEur) ? Math.round(item.volumeEur) : '–',
-        Spike: item.spike ? 'Ja' : 'Nee',
-      }));
-      console.table(table);
-    } else {
-      console.log('[TopSpread] Geen topmunten beschikbaar');
-    }
+    return candlesMap;
   };
 
   const recompute = async (forceCandles = false) => {
@@ -992,7 +753,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       if (!baseCandidates.length) {
         state.lastResult = [];
         state.topMarkets = [];
-        updateMetrics(baseCandidates, []);
+        state.metrics = summarizeMetrics(baseCandidates, []);
         emit();
         return;
       }
@@ -1000,11 +761,12 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       const candidateCount = Math.max(options.limit * 2, options.limit || 1);
       const scopedCandidates = baseCandidates.slice(0, candidateCount);
       await refreshCandlesForMarkets(scopedCandidates.map((item) => item.market), forceCandles);
-      const finalList = buildFinalList(scopedCandidates).slice(0, options.limit);
+      const candlesMap = collectCandlesMap();
+      const finalList = buildScoredList(scopedCandidates, candlesMap).slice(0, options.limit);
 
       state.lastResult = finalList;
       state.topMarkets = finalList.map((item) => item.market);
-      updateMetrics(baseCandidates, finalList);
+      state.metrics = summarizeMetrics(baseCandidates, finalList);
       emit();
     } catch (err) {
       console.warn('Fout bij herberekenen top spreads', err);
@@ -1038,6 +800,37 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     }
 
     await recompute(forceCandles);
+  };
+
+  const logMetrics = () => {
+    const {
+      scannedCount,
+      averageSpread,
+      spikeCount,
+      topFive,
+    } = state.metrics;
+
+    const formattedSpread = Number.isFinite(averageSpread)
+      ? `${averageSpread.toFixed(2)}%`
+      : '–';
+
+    console.log('[TopSpread] Statistieken - markten gescand:', scannedCount,
+      '| gemiddelde spread:', formattedSpread,
+      '| spikes gedetecteerd:', spikeCount,
+      '| tijdstip:', new Date().toISOString());
+
+    if (topFive.length) {
+      const table = topFive.map((item) => ({
+        Markt: item.market,
+        Score: Number.isFinite(item.totalScore) ? item.totalScore.toFixed(2) : '–',
+        Spread: Number.isFinite(item.spreadPct) ? `${item.spreadPct.toFixed(2)}%` : '–',
+        VolumeEur: Number.isFinite(item.volumeEur) ? Math.round(item.volumeEur) : '–',
+        Spike: item.spike ? 'Ja' : 'Nee',
+      }));
+      console.table(table);
+    } else {
+      console.log('[TopSpread] Geen topmunten beschikbaar');
+    }
   };
 
   const subscribe = (listener) => {
