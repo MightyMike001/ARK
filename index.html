@@ -398,6 +398,7 @@
 
     let renderTimer = null;
     let lastFetched = [];
+    let lastErrorMessage = '';
     let activeConfig = loadConfig();
     let dataFeed = null;
     let unsubscribeFeed = null;
@@ -500,12 +501,22 @@
           tableBody: els.topSpreadsBody,
           updatedAtLabel: els.topSpreadsUpdated,
           config: activeConfig,
+          errorMessage: lastErrorMessage,
         });
       }, UI_UPDATE_DEBOUNCE_MS);
     }
 
-    function handleDataUpdate(list) {
-      lastFetched = Array.isArray(list) ? list : [];
+    function handleDataUpdate(payload) {
+      if (Array.isArray(payload)) {
+        lastFetched = payload;
+        lastErrorMessage = '';
+      } else if (payload && typeof payload === 'object') {
+        lastFetched = Array.isArray(payload.items) ? payload.items : [];
+        lastErrorMessage = payload.error ? 'data unavailable' : '';
+      } else {
+        lastFetched = [];
+        lastErrorMessage = 'data unavailable';
+      }
       scheduleRender();
     }
 

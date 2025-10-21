@@ -11,6 +11,8 @@ const POLL_INTERVAL_TICKER_MS = 30000;
 const POLL_INTERVAL_CANDLES_MS = 60000;
 const LOG_INTERVAL_MS = 60000;
 const CANDLE_CACHE_TTL_MS = 60000;
+const RETRY_DELAY_MS = 5000;
+const MAX_FETCH_RETRIES = 3;
 
 const requestQueue = [];
 let requestQueueActive = false;
@@ -158,10 +160,22 @@ const mapWithConcurrency = async (items, limit = MAX_CONCURRENT_REQUESTS, iterat
   return results;
 };
 
-const rawFetchJson = async (url) => {
+const wait = (ms) => new Promise((resolve) => {
+  setTimeout(resolve, ms);
+});
+
+const rawFetchJson = async (url, attempt = 0) => {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+    const status = res.status;
+    const shouldRetry = status === 429 || (status >= 500 && status < 600);
+    if (shouldRetry && attempt < MAX_FETCH_RETRIES) {
+      await wait(RETRY_DELAY_MS);
+      return rawFetchJson(url, attempt + 1);
+    }
+    const error = new Error(`HTTP ${status}`);
+    error.status = status;
+    throw error;
   }
   return res.json();
 };
@@ -358,34 +372,24 @@ export async function fetchTicker24hStats(market = DEFAULT_MARKET) {
 
 const fetchAllTickerBook = async () => {
   const url = `${BITVAVO_BASE_URL}/ticker/book`;
-  try {
-    const payload = await fetchJson(url);
-    const list = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.tickerBook)
-        ? payload.tickerBook
-        : [];
-    return list.map((item) => normalizeTickerBookSnapshot(item)).filter(Boolean);
-  } catch (err) {
-    console.warn('Kon ticker book snapshot niet ophalen', err);
-    return [];
-  }
+  const payload = await fetchJson(url);
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.tickerBook)
+      ? payload.tickerBook
+      : [];
+  return list.map((item) => normalizeTickerBookSnapshot(item)).filter(Boolean);
 };
 
 const fetchAllTicker24h = async () => {
   const url = `${BITVAVO_BASE_URL}/ticker/24h`;
-  try {
-    const payload = await fetchJson(url);
-    const list = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.ticker24h)
-        ? payload.ticker24h
-        : [];
-    return list.map((item) => normalizeTickerPayload(item)).filter(Boolean);
-  } catch (err) {
-    console.warn('Kon ticker24h snapshot niet ophalen', err);
-    return [];
-  }
+  const payload = await fetchJson(url);
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.ticker24h)
+      ? payload.ticker24h
+      : [];
+  return list.map((item) => normalizeTickerPayload(item)).filter(Boolean);
 };
 
 export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 } = {}) {
@@ -600,6 +604,8 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     candles: new Map(),
     lastResult: [],
     topMarkets: [],
+    error: null,
+    errorSource: null,
     metrics: {
       scannedCount: 0,
       averageSpread: NaN,
@@ -623,9 +629,10 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
 
   const emit = () => {
     const snapshot = state.lastResult.map((item) => ({ ...item }));
+    const payload = { items: snapshot, error: state.error };
     listeners.forEach((listener) => {
       try {
-        listener(snapshot);
+        listener(payload);
       } catch (err) {
         console.warn('Listener-fout in top spread poller', err);
       }
@@ -639,19 +646,26 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       const statsEntry = state.stats.get(market);
       if (!bookEntry || !statsEntry) return;
       if (!Number.isFinite(bookEntry?.ask) || !Number.isFinite(bookEntry?.bid)) return;
+      if (bookEntry.ask === 0 || bookEntry.bid === 0) return;
+      if (bookEntry.ask < bookEntry.bid) return;
       const volumeEur = Number.isFinite(statsEntry.volumeQuote) ? statsEntry.volumeQuote : NaN;
       if (minVolume > 0 && (!Number.isFinite(volumeEur) || volumeEur < minVolume)) return;
       const spreadAbs = Number.isFinite(bookEntry.ask) && Number.isFinite(bookEntry.bid)
         ? bookEntry.ask - bookEntry.bid
         : NaN;
       const spreadPct = Number.isFinite(bookEntry.spreadPct) ? bookEntry.spreadPct : NaN;
+      const lastPrice = Number.isFinite(statsEntry.last)
+        ? statsEntry.last
+        : Number.isFinite(bookEntry.mid)
+          ? bookEntry.mid
+          : NaN;
       entries.push({
         market,
         ask: bookEntry.ask,
         bid: bookEntry.bid,
         spreadAbs,
         spreadPct,
-        last: statsEntry.last,
+        last: lastPrice,
         volumeEur,
       });
     });
@@ -751,6 +765,10 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     try {
       const baseCandidates = computeBaseCandidates(options.minVolumeEur);
       if (!baseCandidates.length) {
+        if (state.errorSource === 'recompute') {
+          state.error = null;
+          state.errorSource = null;
+        }
         state.lastResult = [];
         state.topMarkets = [];
         state.metrics = summarizeMetrics(baseCandidates, []);
@@ -764,12 +782,19 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       const candlesMap = collectCandlesMap();
       const finalList = buildScoredList(scopedCandidates, candlesMap).slice(0, options.limit);
 
+      if (state.errorSource === 'recompute') {
+        state.error = null;
+        state.errorSource = null;
+      }
       state.lastResult = finalList;
       state.topMarkets = finalList.map((item) => item.market);
       state.metrics = summarizeMetrics(baseCandidates, finalList);
       emit();
     } catch (err) {
       console.warn('Fout bij herberekenen top spreads', err);
+      state.error = err;
+      state.errorSource = 'recompute';
+      emit();
     } finally {
       recomputeInFlight = false;
       if (recomputeQueued) {
@@ -783,21 +808,34 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
 
   const refreshTickerData = async (forceCandles = false) => {
     if (!active) return;
-    try {
-      const [bookList, statsList] = await Promise.all([
-        fetchAllTickerBook(),
-        fetchAllTicker24h(),
-      ]);
+    let nextError = null;
+    const [bookResult, statsResult] = await Promise.allSettled([
+      fetchAllTickerBook(),
+      fetchAllTicker24h(),
+    ]);
 
+    if (bookResult.status === 'fulfilled') {
+      const bookList = Array.isArray(bookResult.value) ? bookResult.value : [];
       if (bookList.length) {
         state.book = new Map(bookList.map((item) => [item.market, item]));
       }
+    } else {
+      console.warn('Kon ticker book snapshot niet ophalen', bookResult.reason);
+      nextError = bookResult.reason ?? new Error('Kon ticker book snapshot niet ophalen');
+    }
+
+    if (statsResult.status === 'fulfilled') {
+      const statsList = Array.isArray(statsResult.value) ? statsResult.value : [];
       if (statsList.length) {
         state.stats = new Map(statsList.map((item) => [item.market, item]));
       }
-    } catch (err) {
-      console.warn('Kon tickerdata niet verversen', err);
+    } else {
+      console.warn('Kon ticker24h snapshot niet ophalen', statsResult.reason);
+      nextError = nextError ?? statsResult.reason ?? new Error('Kon ticker24h snapshot niet ophalen');
     }
+
+    state.error = nextError;
+    state.errorSource = nextError ? 'fetch' : null;
 
     await recompute(forceCandles);
   };
@@ -838,13 +876,11 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       return () => {};
     }
     listeners.add(listener);
-    if (state.lastResult.length) {
-      const snapshot = state.lastResult.map((item) => ({ ...item }));
-      try {
-        listener(snapshot);
-      } catch (err) {
-        console.warn('Listener-fout in initiële callback', err);
-      }
+    const snapshot = state.lastResult.map((item) => ({ ...item }));
+    try {
+      listener({ items: snapshot, error: state.error });
+    } catch (err) {
+      console.warn('Listener-fout in initiële callback', err);
     }
     return () => {
       listeners.delete(listener);
