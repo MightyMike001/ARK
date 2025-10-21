@@ -213,13 +213,15 @@ export const renderTopSpreads = (list = [], {
           <td class="numeric" title="Spread% = (ask - bid) / gemiddelde prijs × 100">${spreadPct}</td>
           <td class="numeric">${volume}</td>
           <td class="numeric" title="Aanbevolen limit kooporder voor €1000">
-            <div class="limit-advice">
+            <div class="limit-advice buy">
+              <span class="label"><span class="flag">Let op</span> Koop nu</span>
               <span class="price">${buyPrice}</span>
               <span class="amount">${buyAmount} ${baseAsset}</span>
             </div>
           </td>
           <td class="numeric" title="Aanbevolen limit verkooporder voor €1000">
-            <div class="limit-advice">
+            <div class="limit-advice sell">
+              <span class="label"><span class="flag">Let op</span> Verkoop direct</span>
               <span class="price">${sellPrice}</span>
               <span class="amount">${sellAmount} ${baseAsset}</span>
             </div>

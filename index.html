@@ -270,7 +270,58 @@
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-      gap: 4px;
+      gap: 6px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(148, 163, 184, 0.08);
+    }
+
+    .limit-advice.buy {
+      background: rgba(34, 197, 94, 0.14);
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.18);
+    }
+
+    .limit-advice.sell {
+      background: rgba(248, 113, 113, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.16);
+    }
+
+    .limit-advice .label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .limit-advice .label .flag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+    }
+
+    .limit-advice.buy .label {
+      color: #86efac;
+    }
+
+    .limit-advice.buy .label .flag {
+      background: rgba(22, 163, 74, 0.3);
+      color: #bbf7d0;
+    }
+
+    .limit-advice.sell .label {
+      color: #fda4af;
+    }
+
+    .limit-advice.sell .label .flag {
+      background: rgba(220, 38, 38, 0.26);
+      color: #fecaca;
     }
 
     .limit-advice .price {
