@@ -435,6 +435,7 @@
     let activeConfig = loadConfig();
     let dataFeed = null;
     let unsubscribeFeed = null;
+    let hasReadyPayload = false;
 
     function cloneDefaults() {
       return {
@@ -542,25 +543,44 @@
     }
 
     function handleDataUpdate(payload) {
+      let items = [];
+      let errorText = '';
+      let isReady = false;
+
       if (Array.isArray(payload)) {
-        lastFetched = payload;
-        lastErrorMessage = '';
+        items = payload;
+        isReady = true;
       } else if (payload && typeof payload === 'object') {
-        const items = Array.isArray(payload.items) ? payload.items : [];
-        lastFetched = items;
+        items = Array.isArray(payload.items) ? payload.items : [];
         const hasItems = items.length > 0;
         if (payload.error && !hasItems) {
           const message = typeof payload.error === 'string'
             ? payload.error
             : payload.error?.message;
-          lastErrorMessage = message || 'data unavailable';
-        } else {
-          lastErrorMessage = '';
+          errorText = message || 'data unavailable';
         }
+        if (!payload.error || hasItems) {
+          errorText = '';
+        }
+        isReady = Boolean(payload.ready);
       } else {
-        lastFetched = [];
-        lastErrorMessage = 'data unavailable';
+        errorText = 'data unavailable';
+        isReady = true;
       }
+
+      const hasItems = items.length > 0;
+      const hasError = Boolean(errorText);
+
+      if (!hasReadyPayload) {
+        if (isReady || hasItems || hasError) {
+          hasReadyPayload = true;
+        } else {
+          return;
+        }
+      }
+
+      lastFetched = items;
+      lastErrorMessage = hasError ? errorText : '';
       scheduleRender();
     }
 

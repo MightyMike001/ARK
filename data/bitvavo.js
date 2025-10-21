@@ -1,6 +1,5 @@
 import { buildScoredList, summarizeMetrics, computeVolatilityIndicators } from '../logic/metrics.js';
 import { roundToTick } from '../calc.js';
-import { seedTopSpreads } from './seed.js';
 
 const BITVAVO_BASE_URL = 'https://api.bitvavo.com/v2';
 const BITVAVO_CORS_PROXY = 'https://corsproxy.io/?';
@@ -724,7 +723,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       spikeCount: 0,
       topFive: [],
     },
-    seedActive: false,
+    hasFetchedOnce: false,
   };
 
   const options = {
@@ -742,7 +741,11 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
 
   const emit = () => {
     const snapshot = state.lastResult.map((item) => ({ ...item }));
-    const payload = { items: snapshot, error: state.error };
+    const payload = {
+      items: snapshot,
+      error: state.error,
+      ready: state.hasFetchedOnce,
+    };
     listeners.forEach((listener) => {
       try {
         listener(payload);
@@ -751,34 +754,6 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       }
     });
   };
-
-  const applySeedSnapshot = () => {
-    if (!Array.isArray(seedTopSpreads) || !seedTopSpreads.length) {
-      return false;
-    }
-
-    const seededList = seedTopSpreads
-      .filter((item) => item && typeof item.market === 'string')
-      .map((item) => ({ ...item }));
-
-    if (!seededList.length) {
-      return false;
-    }
-
-    state.lastResult = seededList.slice(0, options.limit);
-    state.topMarkets = state.lastResult.map((item) => item.market);
-    state.metrics = summarizeMetrics(seededList, state.lastResult);
-    state.error = null;
-    state.errorSource = null;
-    state.seedActive = true;
-    emit();
-    return true;
-  };
-
-  const seededInitially = applySeedSnapshot();
-  if (!seededInitially) {
-    state.seedActive = false;
-  }
 
   const computeBaseCandidates = (minVolumeFilter = 0) => {
     const minVolume = Number.isFinite(minVolumeFilter) && minVolumeFilter > 0 ? minVolumeFilter : 0;
@@ -917,16 +892,6 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     try {
       const baseCandidates = computeBaseCandidates(options.minVolumeEur);
       if (!baseCandidates.length) {
-        if (!state.seedActive) {
-          const seeded = applySeedSnapshot();
-          if (seeded) {
-            return;
-          }
-        }
-        if (state.seedActive && state.lastResult.length) {
-          emit();
-          return;
-        }
         if (state.errorSource === 'recompute') {
           state.error = null;
           state.errorSource = null;
@@ -951,7 +916,6 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
       state.lastResult = finalList;
       state.topMarkets = finalList.map((item) => item.market);
       state.metrics = summarizeMetrics(baseCandidates, finalList);
-      state.seedActive = false;
       emit();
     } catch (err) {
       console.warn('Fout bij herberekenen top spreads', err);
@@ -999,6 +963,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
 
     state.error = nextError;
     state.errorSource = nextError ? 'fetch' : null;
+    state.hasFetchedOnce = true;
 
     await recompute(forceCandles);
   };
