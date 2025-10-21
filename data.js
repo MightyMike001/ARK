@@ -362,6 +362,7 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
 
       const volumeSurge = Number.isFinite(volatility.volumeSurge) ? volatility.volumeSurge : NaN;
       const wickiness = Number.isFinite(volatility.wickiness) ? volatility.wickiness : NaN;
+      const range15mPct = Number.isFinite(volatility.range15mPct) ? volatility.range15mPct : NaN;
 
       const spreadScore = clamp(Number.isFinite(item.spreadPct) ? item.spreadPct / 1.5 : NaN, 0, 1);
       const volScore = clamp(volumeSurge / 3, 0, 1);
@@ -374,6 +375,7 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
         ...item,
         volumeSurge,
         wickiness,
+        range15mPct,
         spreadScore,
         volScore,
         wickScore,
