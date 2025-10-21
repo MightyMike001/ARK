@@ -17,6 +17,7 @@ const RETRY_DELAY_MS = 5000;
 const MAX_FETCH_RETRIES = 3;
 const DEFAULT_LIMIT_NOTIONAL_EUR = 1000;
 const FALLBACK_TICK_SIZE = 0.0001;
+const SCORING_CANDLE_INTERVALS = ['15m'];
 
 const requestQueue = [];
 let requestQueueActive = false;
@@ -544,7 +545,7 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
       let candles = {};
       try {
         const candlePayload = await fetchBitvavoCandles(item.market, {
-          intervals: ['1m', '15m'],
+          intervals: SCORING_CANDLE_INTERVALS,
           limit: 120,
         });
         candles = candlePayload?.candles ?? {};
@@ -599,7 +600,7 @@ const sanitizeCandleLimit = (value) => {
 
 export async function fetchBitvavoCandles(
   market = DEFAULT_MARKET,
-  { intervals = ['1m', '15m'], limit = 120 } = {},
+  { intervals = SCORING_CANDLE_INTERVALS, limit = 120 } = {},
 ) {
   const marketId = normalizeMarketId(market);
   const uniqueIntervals = Array.from(new Set((intervals || []).map((interval) => interval?.toString().trim()).filter(Boolean)));
@@ -641,7 +642,7 @@ export async function fetchBitvavoMarketSnapshots({ includeCandles = true, candl
       let candles = null;
       if (includeCandles) {
         const candlePayload = await fetchBitvavoCandles(market.market, {
-          intervals: ['1m', '15m'],
+          intervals: SCORING_CANDLE_INTERVALS,
           limit: candleLimit,
         });
         candles = candlePayload?.candles ?? {};
@@ -820,7 +821,7 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
     }
 
     const fetchPromise = fetchBitvavoCandles(market, {
-      intervals: ['1m', '15m'],
+      intervals: SCORING_CANDLE_INTERVALS,
       limit: 120,
     })
       .then((payload) => {
@@ -903,7 +904,14 @@ export function createTopSpreadPoller({ limit = 50, minVolumeEur = 0 } = {}) {
         return;
       }
 
-      const candidateCount = Math.max(options.limit * 2, options.limit || 1);
+      const limitForCount = Number.isFinite(options.limit) && options.limit > 0
+        ? options.limit
+        : 1;
+      const buffer = Math.max(1, Math.ceil(limitForCount / 2));
+      const candidateCount = Math.min(
+        baseCandidates.length,
+        limitForCount + buffer,
+      );
       const scopedCandidates = baseCandidates.slice(0, candidateCount);
       await refreshCandlesForMarkets(scopedCandidates.map((item) => item.market), forceCandles);
       const candlesMap = collectCandlesMap();
