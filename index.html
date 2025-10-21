@@ -511,8 +511,17 @@
         lastFetched = payload;
         lastErrorMessage = '';
       } else if (payload && typeof payload === 'object') {
-        lastFetched = Array.isArray(payload.items) ? payload.items : [];
-        lastErrorMessage = payload.error ? 'data unavailable' : '';
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        lastFetched = items;
+        const hasItems = items.length > 0;
+        if (payload.error && !hasItems) {
+          const message = typeof payload.error === 'string'
+            ? payload.error
+            : payload.error?.message;
+          lastErrorMessage = message || 'data unavailable';
+        } else {
+          lastErrorMessage = '';
+        }
       } else {
         lastFetched = [];
         lastErrorMessage = 'data unavailable';
