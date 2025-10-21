@@ -108,11 +108,11 @@ export const renderTopSpreads = (list = [], {
         <tr data-market="${market}" class="${className}">
           <td class="numeric">${rank}</td>
           <td>${market}</td>
-          <td class="numeric">${totalScore}${spikeBadge}</td>
-          <td class="numeric">${spreadPct}</td>
-          <td class="numeric">${volumeSurge}</td>
-          <td class="numeric">${range15m}</td>
-          <td class="numeric">${wick}</td>
+          <td class="numeric" title="Score = 45% spread + 35% volume + 20% wick + spike bonus">${totalScore}${spikeBadge}</td>
+          <td class="numeric" title="Spread% = (ask - bid) / gemiddelde prijs × 100">${spreadPct}</td>
+          <td class="numeric" title="VolSurge = laatste 15m volume / mediane 15m volume">${volumeSurge}</td>
+          <td class="numeric" title="15m Range% = (high - low) / close × 100 van laatste 15m candle">${range15m}</td>
+          <td class="numeric" title="Wick = (bovenste + onderste wick) / candle body">${wick}</td>
           <td class="numeric">${volume}</td>
           <td class="numeric">${lastPrice}</td>
         </tr>
