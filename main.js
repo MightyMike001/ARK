@@ -1,11 +1,17 @@
 import { fetchTopSpreadMarkets } from './data.js';
 
 const REFRESH_INTERVAL_MS = 60000;
-const FILTER_STORAGE_KEY = 'topSpreadFilters';
-const DEFAULT_FILTERS = {
-  minSpread: 0,
-  minVolSurge: 0,
-  minVolEur: 100000,
+const STORAGE_KEY = 'arkScannerCfg';
+const LEGACY_STORAGE_KEY = 'topSpreadFilters';
+const DEFAULT_THRESHOLDS = {
+  minSpread: 0.8,
+  minVolSurge: 1.5,
+  min24hVolEur: 15000,
+};
+const DEFAULT_ENABLED = {
+  minSpread: true,
+  minVolSurge: true,
+  min24hVolEur: true,
 };
 
 const els = {
@@ -14,37 +20,23 @@ const els = {
   filters: {
     minSpread: document.querySelector('[data-filter="minSpread"]'),
     minVolSurge: document.querySelector('[data-filter="minVolSurge"]'),
-    minVolEur: document.querySelector('[data-filter="minVolEur"]'),
+    min24hVolEur: document.querySelector('[data-filter="min24hVolEur"]'),
+  },
+  toggles: {
+    minSpread: document.querySelector('[data-toggle="minSpread"]'),
+    minVolSurge: document.querySelector('[data-toggle="minVolSurge"]'),
+    min24hVolEur: document.querySelector('[data-toggle="min24hVolEur"]'),
   },
 };
 
 let refreshTimer = null;
 let lastFetched = [];
-let activeFilters = loadFilters();
+let activeConfig = loadConfig();
 
-function loadFilters() {
-  try {
-    const stored = localStorage.getItem(FILTER_STORAGE_KEY);
-    if (!stored) return { ...DEFAULT_FILTERS };
-    const parsed = JSON.parse(stored);
-    return {
-      minSpread: toSafeNumber(parsed?.minSpread, DEFAULT_FILTERS.minSpread),
-      minVolSurge: toSafeNumber(parsed?.minVolSurge, DEFAULT_FILTERS.minVolSurge),
-      minVolEur: toSafeNumber(parsed?.minVolEur, DEFAULT_FILTERS.minVolEur),
-    };
-  } catch (err) {
-    console.warn('Kon filters niet laden', err);
-    return { ...DEFAULT_FILTERS };
-  }
-}
-
-function saveFilters() {
-  try {
-    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(activeFilters));
-  } catch (err) {
-    console.warn('Kon filters niet opslaan', err);
-  }
-}
+const cloneDefaults = () => ({
+  thresholds: { ...DEFAULT_THRESHOLDS },
+  enabled: { ...DEFAULT_ENABLED },
+});
 
 function toSafeNumber(value, fallback = 0) {
   const parsed = Number.parseFloat(value);
@@ -52,13 +44,80 @@ function toSafeNumber(value, fallback = 0) {
   return parsed;
 }
 
-function applyFiltersToInputs() {
-  Object.entries(activeFilters).forEach(([key, value]) => {
-    const input = els.filters[key];
+function parseStoredConfig(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return cloneDefaults();
+  }
+
+  const defaults = cloneDefaults();
+  const thresholds = { ...defaults.thresholds };
+  const enabled = { ...defaults.enabled };
+
+  Object.keys(thresholds).forEach((key) => {
+    const candidate = raw?.thresholds?.[key]
+      ?? raw?.filters?.[key]
+      ?? raw?.[key];
+    thresholds[key] = toSafeNumber(candidate, defaults.thresholds[key]);
+  });
+
+  Object.keys(enabled).forEach((key) => {
+    const flag = raw?.enabled?.[key];
+    enabled[key] = typeof flag === 'boolean' ? flag : defaults.enabled[key];
+  });
+
+  return { thresholds, enabled };
+}
+
+function loadConfig() {
+  const defaults = cloneDefaults();
+
+  if (typeof localStorage === 'undefined') {
+    return defaults;
+  }
+
+  const readConfig = (key) => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (!stored) return null;
+      const parsed = JSON.parse(stored);
+      return parseStoredConfig(parsed);
+    } catch (err) {
+      console.warn(`Kon configuratie niet laden (${key})`, err);
+      return null;
+    }
+  };
+
+  return readConfig(STORAGE_KEY)
+    ?? readConfig(LEGACY_STORAGE_KEY)
+    ?? defaults;
+}
+
+function saveConfig() {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(activeConfig));
+  } catch (err) {
+    console.warn('Kon configuratie niet opslaan', err);
+  }
+}
+
+function applyConfigToInputs() {
+  const { thresholds, enabled } = activeConfig;
+
+  Object.entries(els.filters).forEach(([key, input]) => {
     if (!input) return;
+    const value = thresholds[key];
     if (typeof value === 'number') {
       input.value = Number.isFinite(value) ? value : '';
     }
+    input.disabled = !enabled[key];
+  });
+
+  Object.entries(els.toggles).forEach(([key, toggle]) => {
+    if (!toggle) return;
+    toggle.checked = Boolean(enabled[key]);
   });
 }
 
@@ -87,14 +146,18 @@ function formatPrice(value, digits = 4) {
 
 function filterMarkets(list) {
   if (!Array.isArray(list)) return [];
+  const { thresholds, enabled } = activeConfig;
   return list.filter((item) => {
     if (!item) return false;
-    const passesSpread = !Number.isFinite(activeFilters.minSpread)
-      || item.spreadPct >= activeFilters.minSpread;
-    const passesVolumeSurge = !Number.isFinite(activeFilters.minVolSurge)
-      || item.volumeSurge >= activeFilters.minVolSurge;
-    const passesVolume = !Number.isFinite(activeFilters.minVolEur)
-      || item.volumeEur >= activeFilters.minVolEur;
+    const passesSpread = !enabled.minSpread
+      || !Number.isFinite(thresholds.minSpread)
+      || item.spreadPct >= thresholds.minSpread;
+    const passesVolumeSurge = !enabled.minVolSurge
+      || !Number.isFinite(thresholds.minVolSurge)
+      || item.volumeSurge >= thresholds.minVolSurge;
+    const passesVolume = !enabled.min24hVolEur
+      || !Number.isFinite(thresholds.min24hVolEur)
+      || item.volumeEur >= thresholds.min24hVolEur;
     return passesSpread && passesVolumeSurge && passesVolume;
   });
 }
@@ -150,9 +213,12 @@ function renderTopSpreads(rawList = []) {
 
 async function refreshTopSpreads() {
   try {
+    const { thresholds, enabled } = activeConfig;
     const list = await fetchTopSpreadMarkets({
       limit: 50,
-      minVolumeEur: activeFilters.minVolEur,
+      minVolumeEur: enabled.min24hVolEur && Number.isFinite(thresholds.min24hVolEur)
+        ? thresholds.min24hVolEur
+        : 0,
     });
     lastFetched = Array.isArray(list) ? list : [];
     renderTopSpreads(lastFetched);
@@ -163,11 +229,27 @@ async function refreshTopSpreads() {
   }
 }
 
-function handleFilterChange(key, value) {
-  if (!(key in activeFilters)) return;
-  const safeValue = toSafeNumber(value, DEFAULT_FILTERS[key]);
-  activeFilters = { ...activeFilters, [key]: safeValue };
-  saveFilters();
+function handleThresholdChange(key, value) {
+  if (!(key in activeConfig.thresholds)) return;
+  const safeValue = toSafeNumber(value, DEFAULT_THRESHOLDS[key]);
+  activeConfig = {
+    thresholds: { ...activeConfig.thresholds, [key]: safeValue },
+    enabled: { ...activeConfig.enabled },
+  };
+  saveConfig();
+  applyConfigToInputs();
+  renderTopSpreads(lastFetched);
+  refreshTopSpreads();
+}
+
+function handleToggleChange(key, nextState) {
+  if (!(key in activeConfig.enabled)) return;
+  activeConfig = {
+    thresholds: { ...activeConfig.thresholds },
+    enabled: { ...activeConfig.enabled, [key]: Boolean(nextState) },
+  };
+  saveConfig();
+  applyConfigToInputs();
   renderTopSpreads(lastFetched);
   refreshTopSpreads();
 }
@@ -176,7 +258,14 @@ function wireEvents() {
   Object.entries(els.filters).forEach(([key, input]) => {
     if (!input) return;
     input.addEventListener('change', (event) => {
-      handleFilterChange(key, event.target.value);
+      handleThresholdChange(key, event.target.value);
+    });
+  });
+
+  Object.entries(els.toggles).forEach(([key, toggle]) => {
+    if (!toggle) return;
+    toggle.addEventListener('change', (event) => {
+      handleToggleChange(key, event.target.checked);
     });
   });
 }
@@ -192,7 +281,7 @@ function startPolling() {
 }
 
 function init() {
-  applyFiltersToInputs();
+  applyConfigToInputs();
   wireEvents();
   startPolling();
 }
