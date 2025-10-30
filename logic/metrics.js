@@ -56,7 +56,7 @@ const calculateSpreadPct = (book) => {
   }
   const mid = (ask + bid) / 2;
   if (!Number.isFinite(mid) || mid <= 0) return NaN;
-  return ((ask - bid) / mid) * 100;
+  return ((ask - bid) / (2 * mid)) * 100;
 };
 
 export const computeVolatilityIndicators = ({ candles = {}, book = null } = {}) => {

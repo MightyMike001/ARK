@@ -45,4 +45,13 @@ const makeSeries = (volumes) => volumes.map((volume, index) => (
   assert.strictEqual(result.volumeSurge, 2);
 }
 
+{
+  const book = { bid: 100, ask: 101 };
+  const result = computeVolatilityIndicators({ book });
+  const mid = (book.ask + book.bid) / 2;
+  const expected = ((book.ask - book.bid) / (2 * mid)) * 100;
+  assert.ok(Number.isFinite(result.spreadPct));
+  assert.strictEqual(result.spreadPct, expected);
+}
+
 console.log('Volatility indicator tests passed.');
