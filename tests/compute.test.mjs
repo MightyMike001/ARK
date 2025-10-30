@@ -50,4 +50,19 @@ for (const { description, bid, ask, tick } of scenarios) {
   );
 }
 
+{
+  const bid = 100;
+  const ask = 101;
+  const params = { ...baseParams, tick: 0.1 };
+  const result = compute(bid, ask, params);
+  const mid = (bid + ask) / 2;
+  const expected = ((ask - bid) / (2 * mid)) * 100;
+  const expectedClamped = parseFloat(expected.toFixed(3));
+  assert.strictEqual(
+    result.spreadPct,
+    expectedClamped,
+    'spreadPct moet halve spreadpercentage weergeven',
+  );
+}
+
 console.log('Alle compute-tests voor smalle spreads geslaagd.');

@@ -131,7 +131,7 @@ export function compute(bid, ask, params, book = {}) {
 
   const spreadAbs = ask - bid;
   const mid = (bid + ask) / 2;
-  const spreadRatio = mid > 0 ? spreadAbs / mid : NaN;
+  const spreadRatio = mid > 0 ? spreadAbs / (2 * mid) : NaN;
 
   const spreadPct = isFinite(spreadRatio) ? spreadRatio * 100 : NaN;
 

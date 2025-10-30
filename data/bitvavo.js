@@ -409,7 +409,7 @@ const normalizeTickerBookSnapshot = (payload, marketId) => {
   const spreadAbs = Number.isFinite(ask) && Number.isFinite(bid) ? ask - bid : NaN;
   const mid = Number.isFinite(ask) && Number.isFinite(bid) ? (ask + bid) / 2 : NaN;
   const spreadPct = Number.isFinite(spreadAbs) && Number.isFinite(mid) && mid > 0
-    ? (spreadAbs / mid) * 100
+    ? (spreadAbs / (2 * mid)) * 100
     : NaN;
 
   return {
@@ -438,7 +438,7 @@ export async function fetchBitvavoTickerBook(market = DEFAULT_MARKET) {
     const spreadAbs = Number.isFinite(ask) && Number.isFinite(bid) ? ask - bid : NaN;
     const mid = Number.isFinite(ask) && Number.isFinite(bid) ? (ask + bid) / 2 : NaN;
     const spreadPct = Number.isFinite(spreadAbs) && Number.isFinite(mid) && mid > 0
-      ? (spreadAbs / mid) * 100
+      ? (spreadAbs / (2 * mid)) * 100
       : NaN;
 
     return {
@@ -525,7 +525,7 @@ export async function fetchTopSpreadMarkets({ limit = 10, minVolumeEur = 100000 
           ? (item.ask + item.bid) / 2
           : NaN;
         const spreadPct = Number.isFinite(spreadAbs) && Number.isFinite(mid) && mid > 0
-          ? (spreadAbs / mid) * 100
+          ? (spreadAbs / (2 * mid)) * 100
           : NaN;
         const volumeEur = Number.isFinite(item.volumeQuote) ? item.volumeQuote : NaN;
         return {

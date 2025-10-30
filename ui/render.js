@@ -248,7 +248,7 @@ export const renderTopSpreads = (list = [], {
           <td class="numeric">${entry.rank}</td>
           <td>${entry.market}</td>
           <td class="numeric" title="Score = 45% spread + 35% volume + 20% wick + spike bonus">${entry.totalScore}${spikeBadge}</td>
-          <td class="numeric" title="Spread% = (ask - bid) / gemiddelde prijs × 100">${entry.spreadPct}</td>
+          <td class="numeric" title="Spread% = (ask - bid) / (2 × gemiddelde prijs) × 100">${entry.spreadPct}</td>
           <td class="numeric">${entry.volume}</td>
           <td class="numeric" title="Aanbevolen limit kooporder voor €1000">
             <div class="limit-advice buy">
@@ -288,7 +288,7 @@ export const renderTopSpreads = (list = [], {
           </header>
           <dl class="mobile-market-card__metrics">
             <div>
-              <dt title="Spread% = (ask - bid) / gemiddelde prijs × 100">Spread%</dt>
+              <dt title="Spread% = (ask - bid) / (2 × gemiddelde prijs) × 100">Spread%</dt>
               <dd>${entry.spreadPct}</dd>
             </div>
             <div>
