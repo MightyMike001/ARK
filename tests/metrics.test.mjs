@@ -38,4 +38,11 @@ const makeSeries = (volumes) => volumes.map((volume, index) => (
   assert.strictEqual(result.volumeSurge, 0);
 }
 
+{
+  const candles = { '15m': makeSeries([100, 100, 100, 100, 100, 0.1, 0, 0, 0, 0, 0, 200]) };
+  const result = computeVolatilityIndicators({ candles });
+  assert.ok(Number.isFinite(result.volumeSurge));
+  assert.strictEqual(result.volumeSurge, 2);
+}
+
 console.log('Volatility indicator tests passed.');

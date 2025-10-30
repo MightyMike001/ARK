@@ -81,10 +81,12 @@ export const computeVolatilityIndicators = ({ candles = {}, book = null } = {}) 
 
   let volumeSurge = NaN;
   if (Number.isFinite(lastVolume)) {
-    if (Number.isFinite(volumeMedian) && volumeMedian > 0) {
-      volumeSurge = lastVolume / volumeMedian;
-    } else if (Number.isFinite(positiveMedian) && positiveMedian > 0) {
-      volumeSurge = lastVolume / positiveMedian;
+    const referenceMedian = (Number.isFinite(positiveMedian) && positiveMedian > 0)
+      ? positiveMedian
+      : volumeMedian;
+
+    if (Number.isFinite(referenceMedian) && referenceMedian > 0) {
+      volumeSurge = lastVolume / referenceMedian;
     } else if (lastVolume > 0) {
       volumeSurge = lastVolume;
     } else {
